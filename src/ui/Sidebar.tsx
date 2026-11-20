@@ -1,5 +1,5 @@
 import { useState, type DragEvent } from 'react'
-import { CHIP_NAMES } from '../engine/chips'
+import { CHIP_GROUPS } from '../engine/chips'
 import { DRAG_MIME, type DragItem } from './types'
 
 // HTML5 drag & drop: we stash a JSON description of the item in the drag event;
@@ -51,16 +51,21 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <h3>Chips</h3>
-      {CHIP_NAMES.map((name) => (
-        <div
-          key={name}
-          className="palette-item"
-          draggable
-          onDragStart={(e) => startDrag(e, { kind: 'chip', type: name })}
-        >
-          {name}
-        </div>
+      {/* One collapsible section per Nand2Tetris project (<details> is built-in HTML). */}
+      {CHIP_GROUPS.map((group) => (
+        <details key={group.title} open className="chip-group">
+          <summary>{group.title}</summary>
+          {group.chips.map((name) => (
+            <div
+              key={name}
+              className="palette-item"
+              draggable
+              onDragStart={(e) => startDrag(e, { kind: 'chip', type: name })}
+            >
+              {name}
+            </div>
+          ))}
+        </details>
       ))}
       <p className="hint">Drag items onto the board. Name a pin before dragging it (names must match the .cmp columns).</p>
     </aside>

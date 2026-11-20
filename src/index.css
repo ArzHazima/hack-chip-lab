@@ -59,3 +59,24 @@ tbody tr:hover { background: #f3f4f6; }
 tr.fail td { background: #fef2f2; }
 tr.selected td { outline: 0; box-shadow: inset 0 0 0 9999px rgba(79, 70, 229, .15); }
 .mono { font-family: ui-monospace, Consolas, monospace; }
+
+/* ---- Stage 3: chip symbols, grouped palette, expected panel ---- */
+.chip-node { background: none; border: 0; min-width: 0; }
+.chip-caption { font-size: 10px; color: #6b7280; text-align: center; margin-bottom: 2px; }
+.chip-symbol { position: relative; }
+.sym { fill: #eef2ff; stroke: #4f46e5; stroke-width: 2; }
+.sym.nofill { fill: none; }
+.lead { stroke: #4f46e5; }
+.sym-text { font-size: 11px; font-weight: 700; fill: #4f46e5; }
+.react-flow__node.selected .sym { stroke: #f59e0b; }
+.pin-label { position: absolute; font-size: 10px; line-height: 12px; color: #374151; pointer-events: none; white-space: nowrap; }
+.box-title { position: absolute; top: 4px; left: 0; text-align: center; font-weight: 700; font-size: 12px; color: #4f46e5; pointer-events: none; }
+
+.chip-group { margin-bottom: 8px; }
+.chip-group summary { cursor: pointer; font-size: 12px; font-weight: 600; color: #374151; padding: 4px 0; margin-bottom: 4px; }
+
+button:disabled { opacity: .45; cursor: not-allowed; }
+.expected { width: 260px; display: flex; flex-direction: column; background: #fff; border-left: 1px solid #e5e7eb; }
+.expected h3 { margin: 0; padding: 10px 14px; font-size: 13px; }
+.expected-scroll { overflow: auto; }
+.expected th, .expected td { padding: 3px 10px; }

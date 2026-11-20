@@ -134,7 +134,67 @@ const defs: ChipDef[] = [
       return out
     },
   },
+  // ---- Project 2: Boolean Arithmetic ----
+  {
+    name: 'HalfAdder',
+    inputs: [p('a'), p('b')],
+    outputs: [p('sum'), p('carry')],
+    eval: ({ a, b }) => ({ sum: a ^ b, carry: a & b }),
+  },
+  {
+    name: 'FullAdder',
+    inputs: [p('a'), p('b'), p('c')],
+    outputs: [p('sum'), p('carry')],
+    eval: ({ a, b, c }) => {
+      const total = a + b + c // 0..3: bit 0 is the sum, bit 1 is the carry
+      return { sum: total & 1, carry: total >> 1 }
+    },
+  },
+  {
+    name: 'Add16',
+    inputs: [p('a', W), p('b', W)],
+    outputs: [p('out', W)],
+    eval: ({ a, b }) => ({ out: mask(a + b, W) }), // overflow is ignored (wraps)
+  },
+  {
+    name: 'Inc16',
+    inputs: [p('in', W)],
+    outputs: [p('out', W)],
+    eval: (i) => ({ out: mask(i.in + 1, W) }),
+  },
+  {
+    // The Hack ALU. Control bits are applied in this order:
+    //   zx/nx: zero / negate x   zy/ny: zero / negate y
+    //   f: 1 → x+y, 0 → x&y      no: negate the output
+    name: 'ALU',
+    inputs: [p('x', W), p('y', W), p('zx'), p('nx'), p('zy'), p('ny'), p('f'), p('no')],
+    outputs: [p('out', W), p('zr'), p('ng')],
+    eval: (i) => {
+      let x = i.zx ? 0 : i.x
+      if (i.nx) x = mask(~x, W)
+      let y = i.zy ? 0 : i.y
+      if (i.ny) y = mask(~y, W)
+      let out = i.f ? mask(x + y, W) : x & y
+      if (i.no) out = mask(~out, W)
+      return { out, zr: out === 0 ? 1 : 0, ng: (out >> (W - 1)) & 1 }
+    },
+  },
 ]
 
 export const CHIPS: Record<string, ChipDef> = Object.fromEntries(defs.map((d) => [d.name, d]))
 export const CHIP_NAMES: string[] = defs.map((d) => d.name)
+
+/** Palette sections, one per Nand2Tetris project. */
+export const CHIP_GROUPS: { title: string; chips: string[] }[] = [
+  {
+    title: 'Project 1 – Boolean Logic',
+    chips: [
+      'Nand', 'Not', 'And', 'Or', 'Xor', 'Mux', 'DMux', 'Not16', 'And16', 'Or16',
+      'Mux16', 'Or8Way', 'Mux4Way16', 'Mux8Way16', 'DMux4Way', 'DMux8Way',
+    ],
+  },
+  {
+    title: 'Project 2 – Boolean Arithmetic',
+    chips: ['HalfAdder', 'FullAdder', 'Add16', 'Inc16', 'ALU'],
+  },
+]

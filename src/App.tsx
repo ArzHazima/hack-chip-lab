@@ -12,6 +12,7 @@ import { parseCmp, type CmpFile } from './engine/cmp'
 import { CircuitError } from './engine/simulate'
 import { runTests, type TestRun } from './engine/runTests'
 import Board from './ui/Board'
+import ExpectedPanel from './ui/ExpectedPanel'
 import ResultsTable from './ui/ResultsTable'
 import Sidebar from './ui/Sidebar'
 import TopBar from './ui/TopBar'
@@ -27,6 +28,7 @@ export default function App() {
   const [edges, setEdges, onEdgesChangeRaw] = useEdgesState<Edge>([])
   const [cmp, setCmp] = useState<CmpFile | null>(null)
   const [cmpName, setCmpName] = useState<string | null>(null)
+  const [showExpected, setShowExpected] = useState(false)
   const [run, setRun] = useState<TestRun | null>(null)
   const [selectedRow, setSelectedRow] = useState<number | null>(null)
   const [errors, setErrors] = useState<string[]>([])
@@ -111,13 +113,14 @@ export default function App() {
   const shownEdges = useMemo<Edge[]>(
     () =>
       edges.map((e) => {
-        const v = row?.wireValues[e.id]
-        if (v === undefined) return e
         const width = edgeWidth(nodes, e)
+        const thickness = width > 1 ? 4 : 2 // 16-bit buses are drawn thicker
+        const v = row?.wireValues[e.id]
+        if (v === undefined) return { ...e, style: { stroke: '#6b7280', strokeWidth: thickness } }
         return {
           ...e,
           animated: false,
-          style: { stroke: v ? GREEN : GRAY, strokeWidth: 2.5 },
+          style: { stroke: v ? GREEN : GRAY, strokeWidth: thickness },
           // Buses (width > 1) show their numeric value on the wire.
           label: width > 1 ? String(v) : undefined,
           labelStyle: { fontWeight: 700, fill: v ? GREEN : '#555' },
@@ -133,7 +136,13 @@ export default function App() {
 
   return (
     <div className="app">
-      <TopBar cmpName={cmpName} onUpload={onUpload} onRun={onRun} />
+      <TopBar
+        cmpName={cmpName}
+        showExpected={showExpected}
+        onUpload={onUpload}
+        onRun={onRun}
+        onToggleExpected={() => setShowExpected((s) => !s)}
+      />
       {errors.length > 0 && (
         <div className="error-banner" role="alert">
           <strong>Can't run:</strong>
@@ -157,6 +166,7 @@ export default function App() {
           />
           {run && <ResultsTable run={run} widths={widths} selected={selectedRow} onSelect={setSelectedRow} />}
         </div>
+        {showExpected && cmp && cmpName && <ExpectedPanel cmp={cmp} fileName={cmpName} />}
       </div>
     </div>
   )
