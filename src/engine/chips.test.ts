@@ -1,0 +1,96 @@
+import { describe, expect, it } from 'vitest'
+import { CHIPS, CHIP_NAMES } from './chips'
+
+const ev = (name: string, inp: Record<string, number>) => CHIPS[name].eval(inp)
+const bits = [0, 1]
+
+describe('built-in chips', () => {
+  it('defines all 16 chips', () => {
+    expect(CHIP_NAMES).toHaveLength(16)
+  })
+
+  it('Nand', () => {
+    // [a, b, out]
+    for (const [a, b, out] of [[0, 0, 1], [0, 1, 1], [1, 0, 1], [1, 1, 0]]) {
+      expect(ev('Nand', { a, b })).toEqual({ out })
+    }
+  })
+
+  it('Not', () => {
+    expect(ev('Not', { in: 0 })).toEqual({ out: 1 })
+    expect(ev('Not', { in: 1 })).toEqual({ out: 0 })
+  })
+
+  it('And / Or / Xor', () => {
+    for (const a of bits) {
+      for (const b of bits) {
+        expect(ev('And', { a, b }).out).toBe(a && b ? 1 : 0)
+        expect(ev('Or', { a, b }).out).toBe(a || b ? 1 : 0)
+        expect(ev('Xor', { a, b }).out).toBe(a !== b ? 1 : 0)
+      }
+    }
+  })
+
+  it('Mux', () => {
+    for (const a of bits) for (const b of bits) {
+      expect(ev('Mux', { a, b, sel: 0 }).out).toBe(a)
+      expect(ev('Mux', { a, b, sel: 1 }).out).toBe(b)
+    }
+  })
+
+  it('DMux', () => {
+    for (const i of bits) {
+      expect(ev('DMux', { in: i, sel: 0 })).toEqual({ a: i, b: 0 })
+      expect(ev('DMux', { in: i, sel: 1 })).toEqual({ a: 0, b: i })
+    }
+  })
+
+  it('Not16 masks to 16 bits', () => {
+    expect(ev('Not16', { in: 0 }).out).toBe(0xffff)
+    expect(ev('Not16', { in: 0xffff }).out).toBe(0)
+    expect(ev('Not16', { in: 0x00ff }).out).toBe(0xff00)
+  })
+
+  it('And16 / Or16', () => {
+    expect(ev('And16', { a: 0xf0f0, b: 0xff00 }).out).toBe(0xf000)
+    expect(ev('Or16', { a: 0xf0f0, b: 0x0f00 }).out).toBe(0xfff0)
+  })
+
+  it('Mux16', () => {
+    expect(ev('Mux16', { a: 0x1234, b: 0xabcd, sel: 0 }).out).toBe(0x1234)
+    expect(ev('Mux16', { a: 0x1234, b: 0xabcd, sel: 1 }).out).toBe(0xabcd)
+  })
+
+  it('Or8Way', () => {
+    expect(ev('Or8Way', { in: 0 }).out).toBe(0)
+    for (let k = 0; k < 8; k++) expect(ev('Or8Way', { in: 1 << k }).out).toBe(1)
+    expect(ev('Or8Way', { in: 0xff }).out).toBe(1)
+  })
+
+  it('Mux4Way16 selects a..d', () => {
+    const data = { a: 1, b: 2, c: 3, d: 4 }
+    for (let sel = 0; sel < 4; sel++) expect(ev('Mux4Way16', { ...data, sel }).out).toBe(sel + 1)
+  })
+
+  it('Mux8Way16 selects a..h', () => {
+    const data = { a: 10, b: 20, c: 30, d: 40, e: 50, f: 60, g: 70, h: 80 }
+    for (let sel = 0; sel < 8; sel++) expect(ev('Mux8Way16', { ...data, sel }).out).toBe((sel + 1) * 10)
+  })
+
+  it('DMux4Way routes input to exactly one output', () => {
+    const names = ['a', 'b', 'c', 'd']
+    for (let sel = 0; sel < 4; sel++) {
+      const out = ev('DMux4Way', { in: 1, sel })
+      names.forEach((n, k) => expect(out[n]).toBe(k === sel ? 1 : 0))
+      expect(Object.values(ev('DMux4Way', { in: 0, sel })).every((v) => v === 0)).toBe(true)
+    }
+  })
+
+  it('DMux8Way routes input to exactly one output', () => {
+    const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+    for (let sel = 0; sel < 8; sel++) {
+      const out = ev('DMux8Way', { in: 1, sel })
+      names.forEach((n, k) => expect(out[n]).toBe(k === sel ? 1 : 0))
+    }
+  })
+})
