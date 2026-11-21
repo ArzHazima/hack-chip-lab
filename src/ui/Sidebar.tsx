@@ -9,7 +9,8 @@ function startDrag(e: DragEvent, item: DragItem) {
   e.dataTransfer.effectAllowed = 'move'
 }
 
-export default function Sidebar() {
+/** `showPins`: the manual Input/Output pin items (hidden while a chip's pins are created automatically). */
+export default function Sidebar({ showPins }: { showPins: boolean }) {
   const [inName, setInName] = useState('a')
   const [inWidth, setInWidth] = useState(1)
   const [outName, setOutName] = useState('out')
@@ -27,6 +28,8 @@ export default function Sidebar() {
 
   return (
     <aside className="sidebar">
+      {showPins ? (
+        <>
       <h3>Pins</h3>
       <div
         className="palette-item pin-item"
@@ -50,6 +53,10 @@ export default function Sidebar() {
           {widthSelect(outWidth, setOutWidth)}
         </div>
       </div>
+        </>
+      ) : (
+        <p className="hint">The chip's input/output pins were created from its .hdl.</p>
+      )}
 
       {/* One collapsible section per Nand2Tetris project (<details> is built-in HTML). */}
       {CHIP_GROUPS.map((group) => (

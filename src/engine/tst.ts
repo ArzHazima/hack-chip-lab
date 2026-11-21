@@ -6,7 +6,8 @@
 //
 // Supported: set, eval, tick, tock, output, repeat N { ... }, output-list.
 // load / output-file / compare-to / echo / clear-echo are accepted and ignored.
-// Anything else (while, if, bus indexing ...) is reported as an error.
+// Any other command (while, if ...) is skipped and reported in `Tst.warnings`, not an error.
+// Bus indexing (set a[0] 1) IS an error, because skipping it would silently give wrong results.
 
 import type { Circuit } from './circuit'
 import { CircuitError } from './simulate'
@@ -36,10 +37,10 @@ export interface OutputCol {
 export interface Tst {
   outputList: OutputCol[]
   commands: TstCommand[]
+  warnings: string[] // e.g. unknown commands that were ignored
 }
 
 const IGNORED = new Set(['load', 'output-file', 'compare-to', 'echo', 'clear-echo'])
-const UNSUPPORTED = new Set(['while', 'if', 'vm-test', 'setvar'])
 
 function tokenize(text: string): string[] {
   const noComments = text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ')
@@ -64,6 +65,7 @@ export function parseTst(text: string): Tst {
   const toks = tokenize(text)
   let pos = 0
   const outputList: OutputCol[] = []
+  const warnings: string[] = []
 
   const skipSeparators = () => {
     while (toks[pos] === ',' || toks[pos] === ';') pos++
@@ -73,6 +75,20 @@ export function parseTst(text: string): Tst {
     const out: string[] = []
     while (pos < toks.length && ![',', ';', '}', '{'].includes(toks[pos])) out.push(toks[pos++])
     return out
+  }
+
+  /** Skips a command we do not understand: its arguments and, if present, a { ... } block. */
+  const skipUnknown = (word: string) => {
+    warnings.push(`Unknown command "${word}" was ignored`)
+    args()
+    if (toks[pos] === '{') {
+      let depth = 0
+      do {
+        if (toks[pos] === '{') depth++
+        else if (toks[pos] === '}') depth--
+        pos++
+      } while (pos < toks.length && depth > 0)
+    }
   }
 
   function block(nested: boolean): TstCommand[] {
@@ -89,7 +105,6 @@ export function parseTst(text: string): Tst {
         return cmds
       }
       if (word === '{') throw new TstParseError('Unexpected "{"')
-      if (UNSUPPORTED.has(word)) throw new TstParseError(`"${word}" is not supported`)
       if (IGNORED.has(word)) {
         args()
       } else if (word === 'output-list') {
@@ -108,20 +123,30 @@ export function parseTst(text: string): Tst {
         if (toks[pos++] !== '{') throw new TstParseError('"repeat N" must be followed by "{"')
         cmds.push({ op: 'repeat', count: +count, body: block(true) })
       } else {
-        throw new TstParseError(`Unknown command "${word}"`)
+        skipUnknown(word)
       }
     }
   }
 
-  return { outputList, commands: block(false) }
+  const commands = block(false)
+  return { outputList, commands, warnings }
 }
 
 // ---------------------------------------------------------------------------
 // Running a script
 
+/** Pin values at the moment of one `output` command (used to colour wires when a row is clicked). */
+export interface Snapshot {
+  time: string
+  inputs: Record<string, number>
+  outputs: Record<string, number>
+  wireValues: Record<string, number>
+}
+
 export interface TstOutput {
   header: string
   rows: string[] // one line per `output`, like "| 0+  |  0  |  0  |  0  |"
+  snapshots: Snapshot[] // parallel to `rows`
 }
 
 const MAX_COMMANDS = 1_000_000 // guards against `repeat 999999999 { ... }` hanging the tab
@@ -142,6 +167,7 @@ export function runTst(circuit: Circuit, tst: Tst): TstOutput {
   const widthOf = new Map(circuit.pins.map((p) => [p.name, p.width]))
   const inputs: Record<string, number> = Object.fromEntries(inPins.map((p) => [p.name, 0]))
   const rows: string[] = []
+  const snapshots: Snapshot[] = []
   let budget = MAX_COMMANDS
 
   const row = (): string => {
@@ -152,6 +178,7 @@ export function runTst(circuit: Circuit, tst: Tst): TstOutput {
       if (v === undefined) throw new CircuitError([`.tst output-list names unknown pin "${col.name}"`])
       return formatCell(col, v, widthOf.get(col.name) ?? 1)
     })
+    snapshots.push({ time: sim.time, inputs: { ...inputs }, outputs: r.outputs, wireValues: r.wireValues })
     return `|${cells.join('|')}|`
   }
 
@@ -184,7 +211,7 @@ export function runTst(circuit: Circuit, tst: Tst): TstOutput {
       return ' '.repeat(pad >> 1) + c.name + ' '.repeat(pad - (pad >> 1))
     })
     .join('|')}|`
-  return { header, rows }
+  return { header, rows, snapshots }
 }
 
 // ---------------------------------------------------------------------------
@@ -203,7 +230,9 @@ export interface CmpComparison {
   message?: string // e.g. different number of rows
 }
 
-const cells = (line: string): string => line.split('|').slice(1, -1).map((s) => s.trim()).join(' | ')
+// Cells are trimmed so spacing never matters; shown as written.
+const cells = (line: string): string =>
+  line.split('|').slice(1, -1).map((s) => s.trim()).join(' | ')
 
 /** Compares output rows with the data rows of a .cmp (header ignored, spacing ignored). */
 export function compareToCmp(actual: string[], cmpText: string): CmpComparison {
@@ -213,7 +242,8 @@ export function compareToCmp(actual: string[], cmpText: string): CmpComparison {
   for (let i = 0; i < n; i++) {
     const e = expected[i] === undefined ? '(no row)' : cells(expected[i])
     const a = actual[i] === undefined ? '(no row)' : cells(actual[i])
-    rows.push({ index: i, pass: e === a, expected: e, actual: a })
+    // Compared case-insensitively so hex digits (%X) never cause a false mismatch.
+    rows.push({ index: i, pass: e.toLowerCase() === a.toLowerCase(), expected: e, actual: a })
   }
   const message =
     actual.length === expected.length ? undefined : `Script produced ${actual.length} rows, .cmp has ${expected.length}`

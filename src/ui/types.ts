@@ -16,3 +16,28 @@ export type DragItem =
   | { kind: 'inpin' | 'outpin'; name: string; width: number }
 
 export const DRAG_MIME = 'application/x-hacklab-item'
+
+// ---- What the results table and the board need, whichever flow produced them ----
+
+/** Values at one result row: lets the board show pin values and colour wires. */
+export interface Snap {
+  inputs: Record<string, number>
+  outputs: Record<string, number>
+  wireValues: Record<string, number>
+}
+
+export interface RunRow {
+  index: number
+  pass: boolean
+  cells: string[] // one text per header (inputs / expected / actual ...)
+  snap?: Snap
+}
+
+export interface RunView {
+  ok: boolean // everything passed and the row counts match
+  passed: number
+  total: number
+  headers: string[]
+  rows: RunRow[]
+  note?: string // extra line under the summary (column list, row-count mismatch ...)
+}

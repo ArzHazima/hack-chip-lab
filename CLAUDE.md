@@ -3,8 +3,9 @@
 Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking them against course test files.
 
 ## Product (MVP)
-- Layout: left sidebar = chip palette; center = canvas (the "board"); top bar = Upload .cmp, Show expected,
-  clock controls (Clock counter, Tick, Tock, Step, Reset), Run.
+- Layout: left sidebar = chip palette; center = canvas (the "board") under a chip banner; top bar = Load folder,
+  Files…, chip selector, Upload .cmp (manual mode only), Show expected, clock controls (Clock counter, Tick, Tock,
+  Step, Reset), Delete selected, Run.
 - User drags chips from the palette onto the canvas, adds named input/output pins, and connects them with wires.
 - Click a chip, pin or wire to select it (amber highlight). Delete / Backspace or the **Delete selected** button removes
   the selection plus any wires attached to deleted nodes. Keys are ignored while typing in a text field. Deletion is
@@ -29,8 +30,24 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
   sample inputs, **Tock** = sampled values become outputs (clock goes 0 → 0+ → 1 → 1+ ...), **Step** = tick+tock,
   **Reset** clears all state. Wires/pins show live values; every DFF/PC shows a "stored: N" badge. Editing the circuit
   restarts the simulation. **Run** (combinational .cmp rows) refuses circuits that contain clocked chips.
-- Later stages (do NOT build unless asked): uploading/running `.tst` + sequential `.cmp` from the UI,
-  saving a user circuit as a reusable chip, bus slicing (`a[0..7]`), `.hdl` export, 3D view.
+- **Exercise folders (chip selector)**: **Load folder** (`webkitdirectory`), **Files…** (multi-select) or drag & drop
+  a folder/files onto the page. Files are grouped by base name into chips `{name, hdl, tst, cmp}`
+  (`groupExerciseFiles`); a chip with a missing file is still listed with ⚠ and which file is missing. Loading
+  replaces the previous list. Selecting a chip:
+  - reads ONLY the interface of its .hdl (`parseHdlInterface`: IN/OUT names + widths; PARTS is ignored) and creates
+    matching input/output pins (left/right columns). The manual Input/Output pin items are hidden while pins are
+    automatic and come back when no chip is selected or the .hdl is missing/unreadable;
+  - uses the chip's own .cmp/.tst (no separate upload); the banner above the board always shows
+    "Chip: X · CMP: … · TST: … · HDL: …" with ⚠ for missing files;
+  - gives every chip its OWN circuit. Switching saves the current one (memory + localStorage key
+    `hacklab:circuit:<chip>`, all in try/catch; manual mode uses `__manual__`) and restores the other. Autosave
+    runs 400 ms after a change and on `pagehide`. A restored circuit is reconciled with the current .hdl
+    (missing pins added, removed pins deleted with their wires, widths fixed).
+- **Run** with a chip selected: runs its .tst (`runExercise`: parseTst → runTst → compareToCmp) and compares with its
+  .cmp, ✅/❌ per row; clicking a row colours the board from that `output`'s snapshot. Without a .tst the .cmp is used
+  as a plain combinational table. Unknown .tst commands give a yellow warning (the command and any `{ }` block are
+  skipped). Without a chip, Run uses the manually uploaded .cmp exactly as before.
+- Later stages (do NOT build unless asked): saving a user circuit as a reusable chip, bus slicing (`a[0..7]`), `.hdl` export, 3D view.
 
 ## Tech stack
 - Vite + React + TypeScript (strict)
@@ -49,9 +66,15 @@ src/
     cmp.ts         # .cmp parser (combinational tables)
     runTests.ts    # run all .cmp rows against a circuit → results
     tst.ts         # .tst subset (set/eval/tick/tock/output/repeat/output-list) + compareToCmp
+    hdl.ts         # .hdl INTERFACE parser (IN/OUT only)
+    exercise.ts    # groupExerciseFiles (Name.hdl/.tst/.cmp → chips) and runExercise (.tst + .cmp)
   ui/          # React components (Sidebar, Board, TopBar, ResultsTable, ExpectedPanel, nodes)
     chipLayout.ts  # pure geometry: shape, size and pin positions per chip type
     flowToCircuit.ts # React Flow graph → engine Circuit
+    exercisePins.ts  # pins from an HDL interface; reconcile a saved circuit with a changed interface
+    fileLoading.ts   # folder/file pickers and drag & drop (walks dropped folders)
+    storage.ts       # safe localStorage autosave per chip
+    runView.ts       # engine results → results-table rows; ChipBanner / ExpectedPanel / ResultsTable
   App.tsx
 ```
 
@@ -65,8 +88,10 @@ src/
   RAM writes happen at tock, reads are combinational.
 - A wire connects one source pin to one target pin of the same width; mismatched width → error shown to user.
 - Unconnected input pin → error listing which pin.
-- `.tst` (engine only): `repeat N { }` capped at 1,000,000 commands; `while`/`if`/bus indexing are rejected with a clear
-  error. Sequential .cmp files (`time` column, `0+`) are compared as trimmed text cells via `compareToCmp`.
+- `.tst`: `repeat N { }` capped at 1,000,000 commands. `set` values: decimal, `%D`, `%B`, `%X`. `output-list` formats
+  `%B %D %X %S` (`name%B2.1.2` = pad, length, pad). Unknown commands (while, if ...) → warning and skipped; bus
+  indexing (`set a[0] 1`) is an error. Output rows and .cmp rows are compared as trimmed text cells, case-insensitive
+  (hex), header ignored; works for sequential .cmp files too (`time` column, `0+`).
 - `.cmp` format: header row `|  a  |  b  | out |`, then value rows. Values are binary strings
   (`0`, `1`, `0000000000001111`); may be padded with spaces. Columns are matched to circuit pins by name:
   names matching circuit inputs are inputs, the rest are expected outputs.

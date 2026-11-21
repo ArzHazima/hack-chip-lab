@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { addChip, addPin, connect, emptyCircuit, type Circuit } from './circuit'
 import { CircuitError, simulate } from './simulate'
 import { Simulator } from './sequential'
-import { compareToCmp, parseTst, runTst, TstParseError } from './tst'
+import { compareToCmp, parseTst, runTst } from './tst'
 
 // ---------------------------------------------------------------------------
 // Circuits built the way a student would: DFF + Mux (+ DMux/Mux8Way for RAM8).
@@ -349,13 +349,21 @@ describe('.tst parser and runner', () => {
   })
 
   it('reports parse errors clearly', () => {
-    expect(() => parseTst('while x { }')).toThrow(TstParseError)
-    expect(() => parseTst('frobnicate;')).toThrow(/Unknown command/)
     expect(() => parseTst('repeat 3 { tick')).toThrow(/Missing "}"/)
     expect(() => parseTst('repeat { tick }')).toThrow(/needs a number/)
     expect(() => parseTst('set in banana')).toThrow(/Bad value/)
     expect(() => parseTst('output-list out%Q1.1.1;')).toThrow(/Bad output-list/)
     expect(() => parseTst('tick; }')).toThrow(/Unexpected "}"/)
+  })
+
+  it('unknown commands become warnings and are skipped (including their { } block)', () => {
+    const t = parseTst('frobnicate 1 2; while out = 0 { tick, repeat 2 { tock; } } set a 1; tick;')
+    expect(t.warnings).toEqual(['Unknown command "frobnicate" was ignored', 'Unknown command "while" was ignored'])
+    expect(t.commands.map((c) => c.op)).toEqual(['set', 'tick'])
+  })
+
+  it('bus indexing in set is still an error (skipping it would hide wrong results)', () => {
+    expect(() => parseTst('set a[0] 1;')).toThrow(/Bus indexing/)
   })
 
   it('reports unknown pins at run time', () => {

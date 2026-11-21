@@ -67,3 +67,13 @@ export function parseCmp(text: string): CmpFile {
   if (rows.length === 0) throw new CmpParseError('.cmp file has a header but no data rows')
   return { columns, widths, rows }
 }
+
+/**
+ * Raw table view of ANY .cmp (including sequential ones with a `time` column like "0+"):
+ * cells are kept as trimmed text, nothing is validated. Used by the "Show expected" panel.
+ */
+export function cmpTextTable(text: string): { columns: string[]; rows: string[][] } {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== '')
+  if (lines.length === 0) throw new CmpParseError('Empty .cmp file')
+  return { columns: splitRow(lines[0]), rows: lines.slice(1).map(splitRow) }
+}

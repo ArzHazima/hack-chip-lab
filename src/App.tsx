@@ -8,33 +8,58 @@ import {
   type OnEdgesChange,
   type OnNodesChange,
 } from '@xyflow/react'
-import { parseCmp, type CmpFile } from './engine/cmp'
-import { CircuitError, hasSequential } from './engine/simulate'
+import { CmpParseError, cmpTextTable, parseCmp, type CmpFile } from './engine/cmp'
+import { groupExerciseFiles, runExercise, type ExerciseChip } from './engine/exercise'
+import { HdlParseError, parseHdlInterface } from './engine/hdl'
+import { runTests } from './engine/runTests'
 import { Simulator } from './engine/sequential'
-import { runTests, type TestRun } from './engine/runTests'
+import { CircuitError, hasSequential } from './engine/simulate'
+import { TstParseError } from './engine/tst'
 import Board from './ui/Board'
-import ExpectedPanel from './ui/ExpectedPanel'
+import { BoardContext } from './ui/BoardContext'
+import ChipBanner from './ui/ChipBanner'
+import ExpectedPanel, { type ExpectedTable } from './ui/ExpectedPanel'
 import ResultsTable from './ui/ResultsTable'
 import Sidebar from './ui/Sidebar'
 import TopBar from './ui/TopBar'
-import { BoardContext } from './ui/BoardContext'
+import { maxIdNumber, pinsFromInterface, reconcilePins } from './ui/exercisePins'
+import { filesFromDrop, hasFiles, readExerciseFiles } from './ui/fileLoading'
 import { edgeWidth, flowToCircuit, inputValues } from './ui/flowToCircuit'
-import type { AppNode, DragItem } from './ui/types'
+import { fromExercise, fromTestRun } from './ui/runView'
+import { loadCircuit, MANUAL_SLOT, saveCircuit, type SavedCircuit } from './ui/storage'
+import type { AppNode, DragItem, RunView } from './ui/types'
 import './index.css'
 
 const GREEN = '#16a34a'
 const GRAY = '#9ca3af'
 
+/** Saved/restored graphs must not come back with stale selection highlights. */
+const deselect = <T extends { selected?: boolean }>(items: T[]): T[] => items.map((i) => ({ ...i, selected: false }))
+
 export default function App() {
-  const [nodes, setNodes, onNodesChangeRaw] = useNodesState<AppNode>([])
-  const [edges, setEdges, onEdgesChangeRaw] = useEdgesState<Edge>([])
+  // The manual board (no chip selected) is restored from the previous visit.
+  const [initial] = useState(() => loadCircuit(MANUAL_SLOT))
+  const [nodes, setNodes, onNodesChangeRaw] = useNodesState<AppNode>(deselect(initial?.nodes ?? []))
+  const [edges, setEdges, onEdgesChangeRaw] = useEdgesState<Edge>(deselect(initial?.edges ?? []))
+  const nextId = useRef(maxIdNumber(initial?.nodes ?? []) + 1) // unique node ids (And1, And2, ...)
+
+  // Exercise chips loaded from a folder, and which one is active (null = manual mode).
+  const [exercises, setExercises] = useState<ExerciseChip[]>([])
+  const [activeName, setActiveName] = useState<string | null>(null)
+  const [autoPins, setAutoPins] = useState(false) // true when the pins came from the chip's .hdl
+  const active = useMemo(() => exercises.find((c) => c.name === activeName) ?? null, [exercises, activeName])
+  // Every slot's circuit lives here while the page is open (and in localStorage across visits).
+  const memory = useRef(new Map<string, SavedCircuit>())
+
+  // Manual mode: a .cmp uploaded by hand.
   const [cmp, setCmp] = useState<CmpFile | null>(null)
   const [cmpName, setCmpName] = useState<string | null>(null)
+
   const [showExpected, setShowExpected] = useState(false)
-  const [run, setRun] = useState<TestRun | null>(null)
+  const [run, setRun] = useState<RunView | null>(null)
   const [selectedRow, setSelectedRow] = useState<number | null>(null)
   const [errors, setErrors] = useState<string[]>([])
-  const nextId = useRef(1) // counter used to build unique node ids (And1, And2, ...)
+  const [warnings, setWarnings] = useState<string[]>([])
 
   // The clocked simulation lives in a ref (it is a mutable object with its own state);
   // `clockTick` is a counter we bump to make React re-render after the clock moves.
@@ -106,8 +131,86 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [deleteSelected])
 
-  const showError = (e: unknown) =>
-    setErrors(e instanceof CircuitError ? e.errors : [`Unexpected error: ${(e as Error).message}`])
+  // ---- Per-chip circuits: save current, restore another ----
+  const persist = () => {
+    const slot = activeName ?? MANUAL_SLOT
+    const data: SavedCircuit = { nodes: deselect(nodes), edges: deselect(edges) }
+    memory.current.set(slot, data)
+    saveCircuit(slot, data) // try/catch inside: works without localStorage
+  }
+  // Autosave a moment after the last change, and when the tab is closed.
+  const persistRef = useRef(persist)
+  persistRef.current = persist
+  useEffect(() => {
+    const t = setTimeout(() => persistRef.current(), 400)
+    return () => clearTimeout(t)
+  }, [nodes, edges, activeName])
+  useEffect(() => {
+    const save = () => persistRef.current()
+    window.addEventListener('pagehide', save)
+    return () => window.removeEventListener('pagehide', save)
+  }, [])
+
+  /** Make `target` (a chip name, or null for manual mode) the active board. */
+  const switchTo = (target: string | null, list: ExerciseChip[] = exercises) => {
+    persist() // keep what the user built for the chip we are leaving
+    const slot = target ?? MANUAL_SLOT
+    const chip = target ? (list.find((c) => c.name === target) ?? null) : null
+    const saved = memory.current.get(slot) ?? loadCircuit(slot)
+    let nextNodes = saved?.nodes ?? []
+    let nextEdges = saved?.edges ?? []
+    nextId.current = Math.max(nextId.current, maxIdNumber(nextNodes) + 1)
+    const newId = () => nextId.current++
+
+    let auto = false
+    const problems: string[] = []
+    if (chip?.hdl) {
+      try {
+        // Only the interface (IN/OUT) is read; PARTS is ignored on purpose.
+        const iface = parseHdlInterface(chip.hdl.text)
+        if (saved) ({ nodes: nextNodes, edges: nextEdges } = reconcilePins(nextNodes, nextEdges, iface, newId))
+        else nextNodes = pinsFromInterface(iface, newId)
+        auto = true
+      } catch (e) {
+        problems.push(`${chip.hdl.name}: ${(e as Error).message}. Add the pins by hand.`)
+      }
+    } else if (chip) {
+      problems.push(`⚠ ${chip.name}.hdl is missing, so the pins cannot be created automatically. Add them by hand.`)
+    }
+
+    setNodes(deselect(nextNodes))
+    setEdges(deselect(nextEdges))
+    setActiveName(target)
+    setAutoPins(auto)
+    setErrors(problems)
+    setWarnings([])
+    structuralChange()
+  }
+
+  const onLoadFiles = async (files: File[]) => {
+    try {
+      const list = groupExerciseFiles(await readExerciseFiles(files))
+      if (list.length === 0) {
+        setErrors(['No .hdl, .tst or .cmp files were found in what you picked.'])
+        return
+      }
+      setExercises(list)
+      setErrors([])
+      setWarnings([])
+      // Keep the active chip if it is still there (its files may have changed), else go back to manual.
+      if (activeName) switchTo(list.some((c) => c.name === activeName) ? activeName : null, list)
+    } catch (e) {
+      setErrors([`Could not read the files: ${(e as Error).message}`])
+    }
+  }
+
+  const showError = (e: unknown) => {
+    if (e instanceof CircuitError) setErrors(e.errors)
+    else if (e instanceof TstParseError) setErrors([`Problem in the .tst file: ${e.message}`])
+    else if (e instanceof CmpParseError) setErrors([`Problem in the .cmp file: ${e.message}`])
+    else if (e instanceof HdlParseError) setErrors([`Problem in the .hdl file: ${e.message}`])
+    else setErrors([`Unexpected error: ${(e as Error).message}`])
+  }
 
   /** Builds the Simulator the first time the clock is used (reports circuit errors). */
   const ensureSim = (): Simulator | null => {
@@ -168,19 +271,37 @@ export default function App() {
 
   const onRun = () => {
     clearRun()
-    if (!cmp) return setErrors(['Upload a .cmp file first.'])
+    setWarnings([])
     const { circuit, errors: pinErrors } = flowToCircuit(nodes, edges)
-    if (pinErrors.length) return setErrors(pinErrors)
-    if (hasSequential(circuit)) {
-      return setErrors([
-        'This circuit contains clocked chips (DFF, RAM, PC ...). Run only checks combinational .cmp rows; ' +
-          'use Tick / Tock / Step to clock it.',
-      ])
-    }
+    const needsTst = [
+      'This circuit contains clocked chips (DFF, RAM, PC ...). Run needs a .tst script to clock it ' +
+        '(or use Tick / Tock / Step by hand).',
+    ]
     try {
-      const result = runTests(circuit, cmp)
+      if (active) {
+        // ---- chip flow: the chip's own .tst and .cmp ----
+        if (!active.cmp) return setErrors([`⚠ ${active.name}.cmp is missing, so there is nothing to compare with.`])
+        if (pinErrors.length) return setErrors(pinErrors)
+        if (active.tst) {
+          const result = runExercise(circuit, active.tst.text, active.cmp.text)
+          setErrors([])
+          setWarnings(result.warnings.map((w) => `${active.tst!.name}: ${w}`))
+          return setRun(fromExercise(result))
+        }
+        // No .tst: treat the .cmp as a plain combinational table.
+        const table = parseCmp(active.cmp.text)
+        if (hasSequential(circuit)) return setErrors(needsTst)
+        const widths = Object.fromEntries(table.columns.map((c, i) => [c, table.widths[i]]))
+        setErrors([])
+        return setRun(fromTestRun(runTests(circuit, table), widths))
+      }
+      // ---- manual flow: a .cmp uploaded by hand ----
+      if (!cmp) return setErrors(['Upload a .cmp file first (or load a folder and pick a chip).'])
+      if (pinErrors.length) return setErrors(pinErrors)
+      if (hasSequential(circuit)) return setErrors(needsTst)
+      const widths = Object.fromEntries(cmp.columns.map((c, i) => [c, cmp.widths[i]]))
       setErrors([])
-      setRun(result)
+      setRun(fromTestRun(runTests(circuit, cmp), widths))
     } catch (e) {
       // CircuitError carries a list of user-fixable problems; anything else is a real bug.
       showError(e)
@@ -203,15 +324,15 @@ export default function App() {
   // What the board shows: the stored graph, plus colors/values from EITHER the selected
   // result row OR the live clocked simulation. Computed on the fly (useMemo) so the real
   // nodes/edges state stays clean.
-  const row = run && selectedRow !== null ? run.rows[selectedRow] : null
+  const snap = run && selectedRow !== null ? run.rows[selectedRow]?.snap : undefined
   const view = useMemo(
     () =>
-      row
-        ? { outputs: row.actual, wires: row.wireValues, rowInputs: row.inputs, stored: undefined }
+      snap
+        ? { outputs: snap.outputs, wires: snap.wireValues, rowInputs: snap.inputs, stored: undefined }
         : live
           ? { outputs: live.result.outputs, wires: live.result.wireValues, rowInputs: undefined, stored: live.stored }
           : null,
-    [row, live],
+    [snap, live],
   )
   const shownNodes = useMemo<AppNode[]>(
     () =>
@@ -249,18 +370,44 @@ export default function App() {
     [edges, nodes, view],
   )
 
-  const widths = useMemo(
-    () => Object.fromEntries((cmp?.columns ?? []).map((c, i) => [c, cmp!.widths[i]])),
-    [cmp],
-  )
+  // The expected table: the active chip's .cmp (any format), or the manually uploaded one.
+  const expectedTable = useMemo<ExpectedTable | null>(() => {
+    try {
+      if (active?.cmp) return { title: active.cmp.name, ...cmpTextTable(active.cmp.text) }
+      if (!active && cmp && cmpName) {
+        return {
+          title: cmpName,
+          columns: cmp.columns,
+          rows: cmp.rows.map((r) => r.values.map((v, j) => v.toString(2).padStart(cmp.widths[j], '0'))),
+        }
+      }
+    } catch {
+      /* unreadable .cmp: Run reports the details */
+    }
+    return null
+  }, [active, cmp, cmpName])
+
+  const onRootDrop = async (e: React.DragEvent) => {
+    if (!hasFiles(e.dataTransfer)) return // chips dragged from the palette are handled by the board
+    e.preventDefault()
+    onLoadFiles(await filesFromDrop(e.dataTransfer)) // entries are read synchronously inside
+  }
 
   return (
-    <div className="app">
+    <div
+      className="app"
+      onDragOver={(e) => hasFiles(e.dataTransfer) && e.preventDefault()}
+      onDrop={onRootDrop}
+    >
       <TopBar
+        chips={exercises}
+        activeName={activeName}
+        onSelectChip={(name) => switchTo(name)}
+        onLoadFiles={onLoadFiles}
         cmpName={cmpName}
-        showExpected={showExpected}
         onUpload={onUpload}
-        onRun={onRun}
+        canShowExpected={expectedTable !== null}
+        showExpected={showExpected}
         onToggleExpected={() => setShowExpected((s) => !s)}
         clockTime={live?.time ?? '0'}
         onTick={() => onClock('tick')}
@@ -269,10 +416,11 @@ export default function App() {
         onReset={() => onClock('reset')}
         hasSelection={hasSelection}
         onDeleteSelected={deleteSelected}
+        onRun={onRun}
       />
       {errors.length > 0 && (
         <div className="error-banner" role="alert">
-          <strong>Can't run:</strong>
+          <strong>Problem:</strong>
           <ul>
             {errors.map((m, i) => (
               <li key={i}>{m}</li>
@@ -280,9 +428,20 @@ export default function App() {
           </ul>
         </div>
       )}
+      {warnings.length > 0 && (
+        <div className="warning-banner" role="status">
+          <strong>Warning:</strong>
+          <ul>
+            {warnings.map((m, i) => (
+              <li key={i}>{m}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="main">
-        <Sidebar />
+        <Sidebar showPins={!active || !autoPins} />
         <div className="center">
+          <ChipBanner chip={active} manualCmpName={cmpName} />
           <BoardContext.Provider value={boardContext}>
             <Board
               nodes={shownNodes}
@@ -293,9 +452,9 @@ export default function App() {
               onDropItem={onDropItem}
             />
           </BoardContext.Provider>
-          {run && <ResultsTable run={run} widths={widths} selected={selectedRow} onSelect={setSelectedRow} />}
+          {run && <ResultsTable run={run} selected={selectedRow} onSelect={setSelectedRow} />}
         </div>
-        {showExpected && cmp && cmpName && <ExpectedPanel cmp={cmp} fileName={cmpName} />}
+        {showExpected && expectedTable && <ExpectedPanel table={expectedTable} />}
       </div>
     </div>
   )
