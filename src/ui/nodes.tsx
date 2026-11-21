@@ -1,8 +1,9 @@
 // Custom React Flow nodes. A <Handle> is a connection point; its `id` is how the
 // engine knows which pin a wire is attached to (chip pin name, or 'in'/'out' for board pins).
 
-import { useMemo, type CSSProperties, type ReactNode } from 'react'
+import { useContext, useMemo, type CSSProperties, type ReactNode } from 'react'
 import { Handle, Position, type NodeProps, type NodeTypes } from '@xyflow/react'
+import { BoardContext } from './BoardContext'
 import { chipLayout, LEAD, type ChipLayout } from './chipLayout'
 import type { ChipNodeT, InPinNodeT, OutPinNodeT } from './types'
 
@@ -85,7 +86,13 @@ function ChipNode({ data }: NodeProps<ChipNodeT>) {
 
   return (
     <div className="chip-node" title={data.type}>
-      {!isBox && <div className="chip-caption">{data.type}</div>}
+      {(!isBox || data.stored !== undefined) && (
+        <div className="chip-caption">
+          {!isBox && data.type}
+          {/* Live stored value of a DFF / PC (only while the clock simulation is active). */}
+          {data.stored !== undefined && <b className="stored">stored: {data.stored}</b>}
+        </div>
+      )}
       <div className="chip-symbol" style={{ width: w, height: h }}>
         <ChipSymbol layout={layout} />
         {isBox && (
@@ -122,10 +129,22 @@ function ChipNode({ data }: NodeProps<ChipNodeT>) {
   )
 }
 
-function InputPinNode({ data }: NodeProps<InPinNodeT>) {
+function InputPinNode({ id, data }: NodeProps<InPinNodeT>) {
+  const { setInputValue } = useContext(BoardContext)
+  const max = 2 ** data.width - 1
   return (
     <div className="board-pin in">
       <span>{label(data.name, data.width)}</span>
+      {/* Value fed to this pin by Tick / Tock / Step. `nodrag` keeps typing from dragging the node. */}
+      <input
+        className="pin-input nodrag"
+        type="number"
+        min={0}
+        max={max}
+        value={data.inputValue ?? 0}
+        aria-label={`Value of ${data.name}`}
+        onChange={(e) => setInputValue(id, Math.min(max, Math.max(0, Math.floor(Number(e.target.value)) || 0)))}
+      />
       {data.value !== undefined && <b className="pin-value">{data.value}</b>}
       <Handle type="source" position={Position.Right} id="out" />
     </div>

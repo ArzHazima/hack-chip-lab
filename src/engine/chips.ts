@@ -7,11 +7,34 @@ export interface PinDef {
   width: number
 }
 
+/**
+ * Behaviour of a clocked (stateful) chip. Each chip INSTANCE owns one state object
+ * (created by `init`), so two DFFs on the board never share a value.
+ *
+ * Clock model (same as Nand2Tetris):
+ *   tick: inputs are sampled and remembered ("latched"), outputs do not change yet;
+ *   tock: the latched values become the stored state, so outputs change now.
+ */
+export interface SeqBehavior {
+  /** True if the outputs depend only on the stored state, never on the present inputs
+   *  (DFF, PC). This is what lets a feedback loop through such a chip be legal. */
+  registered: boolean
+  init(): unknown
+  /** Current outputs, from the stored state (and, for RAM, the address input). */
+  read(inp: Record<string, number>, state: unknown): Record<string, number>
+  tick(inp: Record<string, number>, state: unknown): void
+  tock(state: unknown): void
+  /** A single number to show live on the board (DFF bit, PC counter); undefined = none. */
+  stored?(state: unknown): number | undefined
+}
+
 export interface ChipDef {
   name: string
   inputs: PinDef[]
   outputs: PinDef[]
+  /** Pure evaluation. For sequential chips this is the output of a freshly reset chip. */
   eval: (inp: Record<string, number>) => Record<string, number>
+  seq?: SeqBehavior
 }
 
 /** Keep only the low `width` bits of v (also fixes negatives from `~`). */
@@ -181,8 +204,81 @@ const defs: ChipDef[] = [
   },
 ]
 
-export const CHIPS: Record<string, ChipDef> = Object.fromEntries(defs.map((d) => [d.name, d]))
-export const CHIP_NAMES: string[] = defs.map((d) => d.name)
+// ---- Project 3: sequential chips ----
+
+function seqChip(
+  name: string,
+  inputs: PinDef[],
+  outputs: PinDef[],
+  seq: SeqBehavior,
+): ChipDef {
+  return { name, inputs, outputs, seq, eval: (inp) => seq.read(inp, seq.init()) }
+}
+
+type Reg = { cur: number; next: number }
+
+/** D flip-flop: out(t+1) = in(t). `width` 16 gives DFF16 (16 DFFs side by side). */
+function dffChip(name: string, width: number): ChipDef {
+  return seqChip(name, [p('in', width)], [p('out', width)], {
+    registered: true,
+    init: (): Reg => ({ cur: 0, next: 0 }),
+    read: (_inp, s) => ({ out: (s as Reg).cur }),
+    tick: (inp, s) => void ((s as Reg).next = inp.in),
+    tock: (s) => void ((s as Reg).cur = (s as Reg).next),
+    stored: (s) => (s as Reg).cur,
+  })
+}
+
+type Mem = { mem: Uint16Array; pending: [number, number] | null }
+
+/** RAM with 2^addrBits 16-bit words. Reading is combinational; writing happens at tock. */
+function ramChip(name: string, addrBits: number): ChipDef {
+  return seqChip(
+    name,
+    [p('in', W), p('load'), p('address', addrBits)],
+    [p('out', W)],
+    {
+      registered: false, // out depends on the address input right now
+      init: (): Mem => ({ mem: new Uint16Array(1 << addrBits), pending: null }),
+      read: (inp, s) => ({ out: (s as Mem).mem[inp.address] ?? 0 }),
+      tick: (inp, s) => void ((s as Mem).pending = inp.load ? [inp.address, inp.in] : null),
+      tock: (s) => {
+        const m = s as Mem
+        if (m.pending) m.mem[m.pending[0]] = m.pending[1]
+        m.pending = null
+      },
+    },
+  )
+}
+
+/** Program counter. Priority: reset > load > inc. */
+const pc = seqChip('PC', [p('in', W), p('load'), p('inc'), p('reset')], [p('out', W)], {
+  registered: true,
+  init: (): Reg => ({ cur: 0, next: 0 }),
+  read: (_inp, s) => ({ out: (s as Reg).cur }),
+  tick: (inp, s) => {
+    const r = s as Reg
+    r.next = inp.reset ? 0 : inp.load ? inp.in : inp.inc ? mask(r.cur + 1, W) : r.cur
+  },
+  tock: (s) => void ((s as Reg).cur = (s as Reg).next),
+  stored: (s) => (s as Reg).cur,
+})
+
+const seqDefs: ChipDef[] = [
+  dffChip('DFF', 1),
+  // Stand-in for 16 DFFs: real Register = 16 Bits, which needs bus slicing (a later stage).
+  dffChip('DFF16', W),
+  ramChip('RAM64', 6),
+  ramChip('RAM512', 9),
+  ramChip('RAM4K', 12),
+  ramChip('RAM16K', 14),
+  pc,
+]
+
+export const CHIPS: Record<string, ChipDef> = Object.fromEntries(
+  [...defs, ...seqDefs].map((d) => [d.name, d]),
+)
+export const CHIP_NAMES: string[] = [...defs, ...seqDefs].map((d) => d.name)
 
 /** Palette sections, one per Nand2Tetris project. */
 export const CHIP_GROUPS: { title: string; chips: string[] }[] = [
@@ -196,5 +292,10 @@ export const CHIP_GROUPS: { title: string; chips: string[] }[] = [
   {
     title: 'Project 2 – Boolean Arithmetic',
     chips: ['HalfAdder', 'FullAdder', 'Add16', 'Inc16', 'ALU'],
+  },
+  {
+    // Bit, Register and RAM8 are meant to be BUILT by the user from DFF + Mux.
+    title: 'Project 3 – Memory',
+    chips: ['DFF', 'DFF16', 'PC', 'RAM64', 'RAM512', 'RAM4K', 'RAM16K'],
   },
 ]

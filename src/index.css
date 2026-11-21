@@ -80,3 +80,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .expected h3 { margin: 0; padding: 10px 14px; font-size: 13px; }
 .expected-scroll { overflow: auto; }
 .expected th, .expected td { padding: 3px 10px; }
+
+/* ---- Stage 6: clock controls, live stored values, input pin box ---- */
+.clock { color: #d1d5db; margin-left: 8px; }
+.clock b { display: inline-block; min-width: 3ch; color: #fff; font-family: ui-monospace, Consolas, monospace; }
+.stored { margin-left: 6px; background: #111827; color: #fff; border-radius: 4px; padding: 0 5px; font-size: 10px; }
+.pin-input { width: 64px; font: inherit; font-size: 12px; padding: 1px 4px; border: 1px solid #d1d5db; border-radius: 4px; }

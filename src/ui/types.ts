@@ -2,8 +2,8 @@ import type { Node } from '@xyflow/react'
 
 // React Flow node payloads. (`type` aliases, not interfaces: React Flow needs
 // data to be assignable to Record<string, unknown>.)
-export type ChipData = { type: string }
-export type PinData = { name: string; width: number; value?: number }
+export type ChipData = { type: string; stored?: number } // stored: live DFF/PC value (display only)
+export type PinData = { name: string; width: number; value?: number; inputValue?: number }
 
 export type ChipNodeT = Node<ChipData, 'chip'>
 export type InPinNodeT = Node<PinData, 'inpin'>

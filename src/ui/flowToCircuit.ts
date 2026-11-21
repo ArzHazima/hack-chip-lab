@@ -56,3 +56,10 @@ export function edgeWidth(nodes: AppNode[], edge: Edge): number {
   }
   return src.data.width
 }
+
+/** Values typed into the input pins on the board, keyed by pin name (default 0). */
+export function inputValues(nodes: AppNode[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const n of nodes) if (n.type === 'inpin') out[n.data.name.trim()] = n.data.inputValue ?? 0
+  return out
+}
