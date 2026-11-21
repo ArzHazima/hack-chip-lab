@@ -11,6 +11,8 @@ interface Props {
   onTock: () => void
   onStep: () => void
   onReset: () => void
+  hasSelection: boolean
+  onDeleteSelected: () => void
 }
 
 export default function TopBar(p: Props) {
@@ -38,6 +40,9 @@ export default function TopBar(p: Props) {
       <button onClick={p.onTock} title="Falling edge: sampled values become the outputs">Tock</button>
       <button onClick={p.onStep} title="Tick then Tock">Step</button>
       <button onClick={p.onReset} title="Clear all stored values; clock back to 0">Reset</button>
+      <button disabled={!p.hasSelection} onClick={p.onDeleteSelected} title="Delete the selected chips, pins and wires (Delete / Backspace)">
+        Delete selected
+      </button>
       <button className="primary" onClick={p.onRun}>
         ▶ Run
       </button>

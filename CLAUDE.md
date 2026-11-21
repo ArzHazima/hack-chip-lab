@@ -6,6 +6,9 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
 - Layout: left sidebar = chip palette; center = canvas (the "board"); top bar = Upload .cmp, Show expected,
   clock controls (Clock counter, Tick, Tock, Step, Reset), Run.
 - User drags chips from the palette onto the canvas, adds named input/output pins, and connects them with wires.
+- Click a chip, pin or wire to select it (amber highlight). Delete / Backspace or the **Delete selected** button removes
+  the selection plus any wires attached to deleted nodes. Keys are ignored while typing in a text field. Deletion is
+  handled in `App.tsx` (`deleteSelected`), not by React Flow's `deleteKeyCode` (set to null).
 - Built-in chips (ready-made, black boxes), grouped in the sidebar by Nand2Tetris project (collapsible sections,
   defined in `CHIP_GROUPS` in `chips.ts`):
   - Project 1 – Boolean Logic: Nand, Not, And, Or, Xor, Mux, DMux,

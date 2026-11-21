@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addEdge,
   useEdgesState,
@@ -79,6 +79,32 @@ export default function App() {
     [setNodes],
   )
   const boardContext = useMemo(() => ({ setInputValue }), [setInputValue])
+
+  // ---- Deleting the selection (nodes and wires) ----
+  // We handle Delete/Backspace ourselves instead of relying on React Flow's key handler,
+  // which only fires reliably when the right element has keyboard focus.
+  const hasSelection = nodes.some((n) => n.selected) || edges.some((e) => e.selected)
+  const deleteSelected = useCallback(() => {
+    const gone = new Set(nodes.filter((n) => n.selected).map((n) => n.id))
+    if (gone.size === 0 && !edges.some((e) => e.selected)) return
+    setNodes((ns) => ns.filter((n) => !gone.has(n.id)))
+    // A wire goes away if it is selected itself OR touches a deleted node.
+    setEdges((es) => es.filter((e) => !e.selected && !gone.has(e.source) && !gone.has(e.target)))
+    structuralChange()
+  }, [nodes, edges, setNodes, setEdges, structuralChange])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      // Never steal the key while the user is typing (pin names, the pin value box ...).
+      const t = e.target as HTMLElement | null
+      if (t?.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return
+      e.preventDefault() // Backspace must not navigate "back" in some browsers
+      deleteSelected()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [deleteSelected])
 
   const showError = (e: unknown) =>
     setErrors(e instanceof CircuitError ? e.errors : [`Unexpected error: ${(e as Error).message}`])
@@ -204,13 +230,17 @@ export default function App() {
     () =>
       edges.map((e) => {
         const width = edgeWidth(nodes, e)
-        const thickness = width > 1 ? 4 : 2 // 16-bit buses are drawn thicker
+        const thickness = (width > 1 ? 4 : 2) + (e.selected ? 1.5 : 0) // 16-bit buses are drawn thicker
+        // Selected wires get an amber glow (our inline stroke would hide React Flow's own highlight).
+        const glow = e.selected ? { filter: 'drop-shadow(0 0 3px #f59e0b)' } : {}
         const v = view?.wires[e.id]
-        if (v === undefined) return { ...e, style: { stroke: '#6b7280', strokeWidth: thickness } }
+        if (v === undefined) {
+          return { ...e, style: { stroke: e.selected ? '#f59e0b' : '#6b7280', strokeWidth: thickness, ...glow } }
+        }
         return {
           ...e,
           animated: false,
-          style: { stroke: v ? GREEN : GRAY, strokeWidth: thickness },
+          style: { stroke: v ? GREEN : GRAY, strokeWidth: thickness, ...glow },
           // Buses (width > 1) show their numeric value on the wire.
           label: width > 1 ? String(v) : undefined,
           labelStyle: { fontWeight: 700, fill: v ? GREEN : '#555' },
@@ -237,6 +267,8 @@ export default function App() {
         onTock={() => onClock('tock')}
         onStep={() => onClock('step')}
         onReset={() => onClock('reset')}
+        hasSelection={hasSelection}
+        onDeleteSelected={deleteSelected}
       />
       {errors.length > 0 && (
         <div className="error-banner" role="alert">

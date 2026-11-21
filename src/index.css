@@ -86,3 +86,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .clock b { display: inline-block; min-width: 3ch; color: #fff; font-family: ui-monospace, Consolas, monospace; }
 .stored { margin-left: 6px; background: #111827; color: #fff; border-radius: 4px; padding: 0 5px; font-size: 10px; }
 .pin-input { width: 64px; font: inherit; font-size: 12px; padding: 1px 4px; border: 1px solid #d1d5db; border-radius: 4px; }
+
+/* ---- Selection highlight (nodes; wires are styled in App) ---- */
+.react-flow__node.selected .board-pin { border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245, 158, 11, .35); }
+.react-flow__node.selected .chip-symbol { filter: drop-shadow(0 0 4px #f59e0b); }

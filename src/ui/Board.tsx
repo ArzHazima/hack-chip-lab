@@ -51,7 +51,8 @@ function BoardInner({ nodes, edges, onNodesChange, onEdgesChange, onConnect, onD
         onConnect={onConnect}
         onDragOver={onDragOver}
         onDrop={onDrop}
-        deleteKeyCode={['Backspace', 'Delete']}
+        deleteKeyCode={null} // App handles Delete/Backspace itself (see deleteSelected)
+        defaultEdgeOptions={{ interactionWidth: 20 }} // wide invisible click area around each wire
         fitView
       >
         <Background />
