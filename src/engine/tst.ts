@@ -156,7 +156,12 @@ function formatCell(col: OutputCol, value: number | string, width: number): stri
   if (col.fmt === 'S') s = String(value).slice(0, col.len).padEnd(col.len)
   else if (col.fmt === 'B') s = (+value >>> 0).toString(2).padStart(col.len, '0').slice(-col.len)
   else if (col.fmt === 'X') s = (+value >>> 0).toString(16).toUpperCase().padStart(col.len, '0').slice(-col.len)
-  else s = String(+value >= 1 << (width - 1) && width > 1 ? +value - (1 << width) : +value).padStart(col.len)
+  else {
+    // %D shows a 16-bit value as signed (two's complement). Narrower buses (sel[2], sel[3] ...) are
+    // plain unsigned numbers: a 2-bit 2 is "2", not "-2".
+    const signed = width >= 16 && +value >= 1 << (width - 1)
+    s = String(signed ? +value - (1 << width) : +value).padStart(col.len)
+  }
   return ' '.repeat(col.left) + s + ' '.repeat(col.right)
 }
 

@@ -2,7 +2,8 @@
 // pin handle sits. Pure TypeScript (no React) so it is easy to reason about.
 // All coordinates are pixels inside the chip's own SVG box (origin top-left).
 
-import { CHIPS } from '../engine/chips'
+import { defOfData, busTitle } from './busParams'
+import type { BusParams } from './types'
 
 export type Shape = 'and' | 'nand' | 'or' | 'xor' | 'not' | 'mux' | 'dmux' | 'box'
 
@@ -23,6 +24,7 @@ export interface ChipLayout {
   w: number
   h: number
   lines: string[] // small text drawn in the middle of the symbol (e.g. "16")
+  title?: string // text for a rounded rectangle, when it is not the chip's type name (wiring nodes)
   pins: PinPlace[]
 }
 
@@ -46,8 +48,10 @@ const LABEL_OF: Record<string, string[]> = {
   DMux4Way: ['4-way'], DMux8Way: ['8-way'],
 }
 
-export function chipLayout(type: string): ChipLayout {
-  const def = CHIPS[type]
+export function chipLayout(type: string, params?: BusParams): ChipLayout {
+  // Ordinary chips come from the CHIPS table; Split / Join / Const are built from `params`.
+  const data = { type, params }
+  const def = defOfData(data)!
   const shape = SHAPE_OF[type] ?? 'box'
   const ins = def.inputs
   const outs = def.outputs
@@ -66,7 +70,7 @@ export function chipLayout(type: string): ChipLayout {
       const y = 34 + i * 22 - 5
       pins.push({ name: p.name, width: p.width, io: 'out', side: 'right', x: w, y, leadX: w - LEAD, leadY: y })
     })
-    return { shape, w, h, lines: [], pins }
+    return { shape, w, h, lines: [], pins, title: busTitle(data) }
   }
 
   if (shape === 'mux' || shape === 'dmux') {

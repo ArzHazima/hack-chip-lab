@@ -64,6 +64,36 @@ describe('parseHdlInterface', () => {
     expect(i.inputs).toHaveLength(1)
   })
 
+  it('full IN/OUT syntax for any chip: mixed widths, 3-bit selectors, many pins, CRLF line endings', () => {
+    const names = Array.from({ length: 25 }, (_, i) => `p${i}`)
+    const i = parseHdlInterface(
+      [
+        'CHIP Big {',
+        '    IN a[16], sel[3], zx, nx,',
+        `       ${names.map((n) => `${n}[8]`).join(', ')};`,
+        '    OUT out[16], zr, ng,   // flags',
+        '        lowest_bit[1];',
+        '    PARTS:',
+        '}',
+      ].join('\r\n'),
+    )
+    expect(i.inputs).toHaveLength(4 + 25)
+    expect(i.inputs.slice(0, 4)).toEqual([
+      { name: 'a', width: 16 }, { name: 'sel', width: 3 }, { name: 'zx', width: 1 }, { name: 'nx', width: 1 },
+    ])
+    expect(i.inputs[28]).toEqual({ name: 'p24', width: 8 })
+    expect(i.outputs).toEqual([
+      { name: 'out', width: 16 }, { name: 'zr', width: 1 }, { name: 'ng', width: 1 }, { name: 'lowest_bit', width: 1 },
+    ])
+  })
+
+  it('handles a chip with no inputs, pin names with digits/underscores, and BUILTIN / CLOCKED sections', () => {
+    expect(parseHdlInterface('CHIP Const0 { IN ; OUT out; PARTS: }').inputs).toEqual([])
+    const i = parseHdlInterface('CHIP D_1 { IN in_1[16], x2; OUT out; BUILTIN D_1; CLOCKED in_1; }')
+    expect(i.inputs.map((p) => p.name)).toEqual(['in_1', 'x2'])
+    expect(i.outputs).toHaveLength(1)
+  })
+
   it('reports clear errors', () => {
     expect(() => parseHdlInterface('IN a; OUT b;')).toThrow(HdlParseError)
     expect(() => parseHdlInterface('IN a; OUT b;')).toThrow(/CHIP/)

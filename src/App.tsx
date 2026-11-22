@@ -248,6 +248,12 @@ export default function App() {
     const n = nextId.current++
     if (item.kind === 'chip') {
       setNodes((ns) => [...ns, { id: `${item.type}${n}`, type: 'chip', position, data: { type: item.type } }])
+    } else if (item.kind === 'bus') {
+      // Split / Join / Const: a chip node whose pins come from its settings.
+      setNodes((ns) => [
+        ...ns,
+        { id: `${item.type}${n}`, type: 'chip', position, data: { type: item.type, params: item.params } },
+      ])
     } else {
       const name = item.name.trim() || (item.kind === 'inpin' ? 'in' : 'out')
       setNodes((ns) => [

@@ -2,7 +2,7 @@
 // This is the only place where UI data and engine data meet.
 
 import type { Edge } from '@xyflow/react'
-import { CHIPS } from '../engine/chips'
+import { defOfData, paramsOf } from './busParams'
 import type { Circuit, Endpoint } from '../engine/circuit'
 import type { AppNode } from './types'
 
@@ -18,7 +18,9 @@ export function flowToCircuit(nodes: AppNode[], edges: Edge[]): { circuit: Circu
 
   for (const n of nodes) {
     if (n.type === 'chip') {
-      circuit.chips.push({ id: n.id, type: n.data.type })
+      const { params, error } = paramsOf(n.data)
+      if (error) errors.push(`${n.data.type} ${n.id}: ${error}`)
+      circuit.chips.push(params ? { id: n.id, type: n.data.type, params } : { id: n.id, type: n.data.type })
     } else {
       const name = n.data.name.trim()
       if (!name) errors.push('A pin has an empty name')
@@ -52,7 +54,7 @@ export function edgeWidth(nodes: AppNode[], edge: Edge): number {
   const src = nodes.find((n) => n.id === edge.source)
   if (!src) return 1
   if (src.type === 'chip') {
-    return CHIPS[src.data.type]?.outputs.find((p) => p.name === edge.sourceHandle)?.width ?? 1
+    return defOfData(src.data)?.outputs.find((p) => p.name === edge.sourceHandle)?.width ?? 1
   }
   return src.data.width
 }

@@ -17,8 +17,14 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
   - Project 2 – Boolean Arithmetic: HalfAdder, FullAdder, Add16, Inc16, ALU
     (ALU = official Hack ALU: inputs x, y, zx, nx, zy, ny, f, no → outputs out, zr, ng).
   - Project 3 – Memory: DFF, DFF16, PC, RAM64, RAM512, RAM4K, RAM16K. Bit, Register and RAM8 are NOT built in:
-    the user builds them from DFF + Mux (Register/RAM8 use DFF16 + Mux16; DFF16 = 16 DFFs side by side, a stand-in
-    until bus slicing exists, since a 16-bit bus cannot yet be split into 1-bit DFFs).
+    the user builds them from DFF + Mux. DFF16 (= 16 DFFs side by side) was added before buses existed and is KEPT
+    because the sequential tests build Register/RAM8 from it; with Split/Join a Register can now also be made from
+    16 DFFs.
+  - **Wiring** (sidebar section, not in `CHIPS`): **Split** (N-bit in → single-bit outputs `[0]`..`[N-1]` and/or range
+    outputs like `[0..7]`), **Join** (single-bit/range inputs → one N-bit out), **true / false** constants (all ones /
+    zero, chosen width). Width 1..16. Split/Join have a "ranges" text box in the sidebar before dragging
+    (`0..7, 8..15`, empty = every bit on its own); to change a dropped node, delete it and drop a new one. Bit 0 is the
+    least significant. Pin names are the labels (`[3]`, `[0..7]`, `in`, `out`).
 - Chip symbols (SVG, geometry in `ui/chipLayout.ts`): And = D shape, Nand = D + bubble, Or = curved shield,
   Xor = Or + extra back curve, Not = triangle + bubble. Mux = trapezoid (wide left, `sel` enters from the bottom),
   DMux = mirrored trapezoid; the 4Way/8Way versions are the same but taller. 16-bit variants reuse the 1-bit
@@ -47,7 +53,8 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
   .cmp, ✅/❌ per row; clicking a row colours the board from that `output`'s snapshot. Without a .tst the .cmp is used
   as a plain combinational table. Unknown .tst commands give a yellow warning (the command and any `{ }` block are
   skipped). Without a chip, Run uses the manually uploaded .cmp exactly as before.
-- Later stages (do NOT build unless asked): saving a user circuit as a reusable chip, bus slicing (`a[0..7]`), `.hdl` export, 3D view.
+- The app is GENERIC: it must never hardcode chip or exercise names. Any folder of Name.hdl/.tst/.cmp must work.
+- Later stages (do NOT build unless asked): saving a user circuit as a reusable chip, `.hdl` export, 3D view.
 
 ## Tech stack
 - Vite + React + TypeScript (strict)
@@ -67,15 +74,19 @@ src/
     runTests.ts    # run all .cmp rows against a circuit → results
     tst.ts         # .tst subset (set/eval/tick/tock/output/repeat/output-list) + compareToCmp
     hdl.ts         # .hdl INTERFACE parser (IN/OUT only)
+    bus.ts         # Split / Join / Const: busDef (pins+eval from params), parseRanges, busErrors (validation)
+    resolve.ts     # chipOf(instance): CHIPS entry or a bus node built from its params
     exercise.ts    # groupExerciseFiles (Name.hdl/.tst/.cmp → chips) and runExercise (.tst + .cmp)
   ui/          # React components (Sidebar, Board, TopBar, ResultsTable, ExpectedPanel, nodes)
     chipLayout.ts  # pure geometry: shape, size and pin positions per chip type
     flowToCircuit.ts # React Flow graph → engine Circuit
+    busParams.ts     # node data (ranges text) → engine ChipParams; pins of any node (defOfData)
     exercisePins.ts  # pins from an HDL interface; reconcile a saved circuit with a changed interface
     fileLoading.ts   # folder/file pickers and drag & drop (walks dropped folders)
     storage.ts       # safe localStorage autosave per chip
     runView.ts       # engine results → results-table rows; ChipBanner / ExpectedPanel / ResultsTable
   App.tsx
+tests/         # end-to-end tests; fixtures/buses/ = 3 INVENTED chips (hdl/tst/cmp), never the user's files
 ```
 
 ## Engine rules
@@ -88,6 +99,13 @@ src/
   RAM writes happen at tock, reads are combinational.
 - A wire connects one source pin to one target pin of the same width; mismatched width → error shown to user.
 - Unconnected input pin → error listing which pin.
+- Everything that needs a chip's pins calls `chipOf(instance)` (resolve.ts), never `CHIPS[...]` directly, so
+  Split/Join/Const (pins depend on `ChipInstance.params`) work everywhere.
+- Bus validation (`busErrors`, run by `validateCircuit`): width 1..16; every range inside the bus; no range listed
+  twice; **Join**: ranges must not overlap and every output bit must be driven (error lists the undriven bits).
+  Overlap on a **Split** is allowed (reading a bit twice is harmless). A wire into/out of a range pin is
+  width-checked like any wire.
+- `%D` output is signed only for 16-bit pins; narrower buses (sel[3]) print unsigned.
 - `.tst`: `repeat N { }` capped at 1,000,000 commands. `set` values: decimal, `%D`, `%B`, `%X`. `output-list` formats
   `%B %D %X %S` (`name%B2.1.2` = pad, length, pad). Unknown commands (while, if ...) → warning and skipped; bus
   indexing (`set a[0] 1`) is an error. Output rows and .cmp rows are compared as trimmed text cells, case-insensitive
@@ -97,7 +115,8 @@ src/
   names matching circuit inputs are inputs, the rest are expected outputs.
 
 ## Working rules
-- Keep `engine/` free of UI code; every engine function has Vitest tests.
+- Keep `engine/` free of UI code; every engine function has Vitest tests. Tests live in `src/**/*.test.ts` and
+  `tests/**/*.test.ts`; fixtures are invented chips (`tests/fixtures/`), never the user's exercise files.
 - Small focused changes; don't refactor unrelated files.
 - Run `npm test` after engine changes and `npm run build` before saying a stage is done.
 - Explain new tools/concepts briefly in comments — the developer is a 2nd-year CS student.

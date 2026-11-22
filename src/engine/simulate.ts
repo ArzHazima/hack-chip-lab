@@ -1,8 +1,10 @@
 // Combinational simulation: validate the circuit, then evaluate chips in
 // topological order (a chip runs only after every chip feeding it has run).
 
-import { CHIPS, mask } from './chips'
-import { describeEndpoint, isChipEndpoint, type Circuit, type Endpoint } from './circuit'
+import { busErrors, isBusType } from './bus'
+import { mask } from './chips'
+import { chipOf } from './resolve'
+import { describeEndpoint, isChipEndpoint, type ChipInstance, type Circuit, type Endpoint } from './circuit'
 
 /** Thrown for any user-fixable circuit problem. `errors` has one message per problem. */
 export class CircuitError extends Error {
@@ -26,7 +28,7 @@ const key = (e: Endpoint): string => (isChipEndpoint(e) ? `${e.chip}.${e.pin}` :
 function endpointWidth(c: Circuit, e: Endpoint, role: 'source' | 'target'): number | undefined {
   if (isChipEndpoint(e)) {
     const inst = c.chips.find((x) => x.id === e.chip)
-    const def = inst && CHIPS[inst.type]
+    const def = inst && chipOf(inst)
     if (!def) return undefined
     const pins = role === 'source' ? def.outputs : def.inputs
     return pins.find((p) => p.name === e.pin)?.width
@@ -42,7 +44,9 @@ export function validateCircuit(c: Circuit): string[] {
   const errors: string[] = []
 
   for (const inst of c.chips) {
-    if (!CHIPS[inst.type]) errors.push(`Unknown chip type "${inst.type}" (${inst.id})`)
+    if (!chipOf(inst)) errors.push(`Unknown chip type "${inst.type}" (${inst.id})`)
+    // Split / Join / Const settings: ranges inside the bus, no overlaps on a Join, no undriven bits.
+    if (isBusType(inst.type)) errors.push(...busErrors(inst.id, inst.type, inst.params))
   }
 
   const driven = new Set<string>()
@@ -62,7 +66,7 @@ export function validateCircuit(c: Circuit): string[] {
 
   // Every chip input and every circuit output must be driven.
   for (const inst of c.chips) {
-    for (const p of CHIPS[inst.type]?.inputs ?? []) {
+    for (const p of chipOf(inst)?.inputs ?? []) {
       if (!driven.has(`${inst.id}.${p.name}`)) {
         errors.push(`Unconnected input pin: ${inst.id}.${p.name}`)
       }
@@ -79,13 +83,13 @@ export function validateCircuit(c: Circuit): string[] {
 /** Per-instance state of every sequential chip, keyed by chip id. */
 export type ChipStates = Map<string, unknown>
 
-function stateOf(states: ChipStates, id: string, type: string): unknown {
-  if (!states.has(id)) states.set(id, CHIPS[type].seq!.init()) // created on first use
-  return states.get(id)
+function stateOf(states: ChipStates, inst: ChipInstance): unknown {
+  if (!states.has(inst.id)) states.set(inst.id, chipOf(inst)!.seq!.init()) // created on first use
+  return states.get(inst.id)
 }
 
 /** True if the circuit contains at least one clocked chip (DFF, RAM, PC ...). */
-export const hasSequential = (c: Circuit): boolean => c.chips.some((x) => CHIPS[x.type]?.seq)
+export const hasSequential = (c: Circuit): boolean => c.chips.some((x) => chipOf(x)?.seq)
 
 /**
  * Validates the circuit and returns the order in which its chips must be evaluated.
@@ -99,12 +103,12 @@ export function planOrder(c: Circuit): string[] {
   const errors = validateCircuit(c)
   if (errors.length) throw new CircuitError(errors)
 
-  const typeOf = new Map(c.chips.map((x) => [x.id, x.type]))
+  const instOf = new Map(c.chips.map((x) => [x.id, x]))
   const indegree = new Map<string, number>(c.chips.map((x) => [x.id, 0]))
   const downstream = new Map<string, string[]>()
   for (const w of c.wires) {
     if (!isChipEndpoint(w.from) || !isChipEndpoint(w.to)) continue
-    if (CHIPS[typeOf.get(w.from.chip)!].seq?.registered) continue // breaks the dependency
+    if (chipOf(instOf.get(w.from.chip)!)?.seq?.registered) continue // breaks the dependency
     indegree.set(w.to.chip, (indegree.get(w.to.chip) ?? 0) + 1)
     downstream.set(w.from.chip, [...(downstream.get(w.from.chip) ?? []), w.to.chip])
   }
@@ -147,22 +151,23 @@ export function evaluate(
 
   // Registered chips: outputs are known before anything else is computed.
   for (const inst of c.chips) {
-    const def = CHIPS[inst.type]
+    const def = chipOf(inst)!
     if (!def.seq?.registered) continue
-    const out = def.seq.read({}, stateOf(states, inst.id, inst.type))
+    const out = def.seq.read({}, stateOf(states, inst))
     for (const p of def.outputs) values.set(`${inst.id}.${p.name}`, mask(out[p.name], p.width))
   }
 
   const wireInto = new Map(c.wires.map((w) => [key(w.to), w]))
-  const typeOf = new Map(c.chips.map((x) => [x.id, x.type]))
+  const instOf = new Map(c.chips.map((x) => [x.id, x]))
   const chipInputs: Record<string, Record<string, number>> = {}
   for (const id of order) {
-    const def = CHIPS[typeOf.get(id)!]
+    const inst = instOf.get(id)!
+    const def = chipOf(inst)!
     const inp: Record<string, number> = {}
     for (const p of def.inputs) inp[p.name] = values.get(key(wireInto.get(`${id}.${p.name}`)!.from))!
     chipInputs[id] = inp
     if (def.seq?.registered) continue // outputs already set
-    const out = def.seq ? def.seq.read(inp, stateOf(states, id, def.name)) : def.eval(inp)
+    const out = def.seq ? def.seq.read(inp, stateOf(states, inst)) : def.eval(inp)
     for (const p of def.outputs) values.set(`${id}.${p.name}`, mask(out[p.name], p.width))
   }
 

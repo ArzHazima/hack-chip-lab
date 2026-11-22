@@ -1,7 +1,7 @@
 // Stateful simulation: a Simulator owns the per-instance state of every sequential
 // chip and advances the two-phase clock (tick, then tock).
 
-import { CHIPS } from './chips'
+import { chipOf } from './resolve'
 import type { Circuit } from './circuit'
 import { evaluate, planOrder, type ChipStates, type SimResult } from './simulate'
 
@@ -37,7 +37,7 @@ export class Simulator {
   tick(inputs: Record<string, number>): SimResult {
     const result = this.eval(inputs)
     for (const inst of this.circuit.chips) {
-      const seq = CHIPS[inst.type].seq
+      const seq = chipOf(inst)?.seq
       if (seq) seq.tick(result.chipInputs[inst.id], this.states.get(inst.id))
     }
     this.high = true
@@ -48,7 +48,7 @@ export class Simulator {
   tock(inputs: Record<string, number>): SimResult {
     if (this.high) {
       for (const inst of this.circuit.chips) {
-        const seq = CHIPS[inst.type].seq
+        const seq = chipOf(inst)?.seq
         if (seq) seq.tock(this.states.get(inst.id))
       }
       this.high = false
@@ -74,7 +74,7 @@ export class Simulator {
   stored(): Record<string, number> {
     const out: Record<string, number> = {}
     for (const inst of this.circuit.chips) {
-      const seq = CHIPS[inst.type].seq
+      const seq = chipOf(inst)?.seq
       if (!seq?.stored) continue
       const v = seq.stored(this.states.has(inst.id) ? this.states.get(inst.id) : seq.init())
       if (v !== undefined) out[inst.id] = v

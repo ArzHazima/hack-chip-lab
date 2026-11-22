@@ -8,9 +8,26 @@ export interface CircuitPin {
   width: number
 }
 
+/** A run of bits lo..hi (both included) of a bus. A single bit has lo === hi. Bit 0 is the least significant. */
+export interface Range {
+  lo: number
+  hi: number
+}
+
+/**
+ * Settings of the "wiring" nodes (Split / Join / Const), which have no fixed pins:
+ * their pins are derived from these. Ordinary chips have no params.
+ */
+export interface ChipParams {
+  width: number // bus width, 1..16
+  ranges?: Range[] // Split outputs / Join inputs (default: every bit on its own)
+  ones?: boolean // Const: true = all ones, false = all zeros
+}
+
 export interface ChipInstance {
   id: string
-  type: string // key into CHIPS
+  type: string // a key of CHIPS, or 'Split' | 'Join' | 'Const' (see bus.ts)
+  params?: ChipParams
 }
 
 /**
@@ -44,9 +61,9 @@ export const addPin = (
   width = 1,
 ): Circuit => ({ ...c, pins: [...c.pins, { id, name, kind, width }] })
 
-export const addChip = (c: Circuit, id: string, type: string): Circuit => ({
+export const addChip = (c: Circuit, id: string, type: string, params?: ChipParams): Circuit => ({
   ...c,
-  chips: [...c.chips, { id, type }],
+  chips: [...c.chips, params ? { id, type, params } : { id, type }],
 })
 
 export const connect = (c: Circuit, from: Endpoint, to: Endpoint): Circuit => ({

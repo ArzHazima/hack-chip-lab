@@ -157,6 +157,15 @@ describe('end to end: one exercise chip', () => {
     expect(run.rows[0].expected).toBe('00ff')
   })
 
+  it('%D is signed only for 16-bit values; narrower buses are unsigned', () => {
+    let c = emptyCircuit()
+    c = addPin(c, 'sel', 'sel', 'input', 3)
+    c = addPin(c, 'w', 'w', 'input', 16)
+    const run = runExercise(c, 'output-list sel%D1.1.1 w%D1.6.1; set sel 7, set w %B1111111111111111, output;', '|x|\n| 7 | -1 |')
+    expect(run.rows[0].actual).toBe('7 | -1') // not "-1 | -1"
+    expect(run.rows[0].pass).toBe(true)
+  })
+
   it('cmpTextTable shows any .cmp, including sequential ones', () => {
     const t = cmpTextTable('|time | in |\n| 0+  |  1 |\n| 1   |  0 |')
     expect(t.columns).toEqual(['time', 'in'])

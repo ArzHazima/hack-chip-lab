@@ -1,0 +1,10 @@
+// Invented test fixture (not from any course): a 16-bit And built from sixteen 1-bit And chips.
+CHIP Wide16And {
+    IN a[16], b[16];
+    OUT out[16];
+
+    PARTS:
+    And(a=a[0], b=b[0], out=out[0]);
+    And(a=a[1], b=b[1], out=out[1]);
+    // ... one And per bit, up to bit 15
+}

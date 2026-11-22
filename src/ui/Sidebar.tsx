@@ -10,15 +10,24 @@ function startDrag(e: DragEvent, item: DragItem) {
 }
 
 /** `showPins`: the manual Input/Output pin items (hidden while a chip's pins are created automatically). */
+const BUS_WIDTHS = Array.from({ length: 16 }, (_, i) => i + 1)
+
 export default function Sidebar({ showPins }: { showPins: boolean }) {
   const [inName, setInName] = useState('a')
   const [inWidth, setInWidth] = useState(1)
   const [outName, setOutName] = useState('out')
   const [outWidth, setOutWidth] = useState(1)
+  // Wiring nodes: bus width (1..16) and, for Split/Join, the ranges text ("" = every bit on its own).
+  const [splitWidth, setSplitWidth] = useState(16)
+  const [splitRanges, setSplitRanges] = useState('')
+  const [joinWidth, setJoinWidth] = useState(16)
+  const [joinRanges, setJoinRanges] = useState('')
+  const [trueWidth, setTrueWidth] = useState(16)
+  const [falseWidth, setFalseWidth] = useState(16)
 
-  const widthSelect = (value: number, set: (w: number) => void) => (
+  const widthSelect = (value: number, set: (w: number) => void, widths = [1, 2, 3, 8, 16]) => (
     <select value={value} onChange={(e) => set(Number(e.target.value))} title="Bit width">
-      {[1, 2, 3, 8, 16].map((w) => (
+      {widths.map((w) => (
         <option key={w} value={w}>
           {w} bit{w > 1 ? 's' : ''}
         </option>
@@ -57,6 +66,42 @@ export default function Sidebar({ showPins }: { showPins: boolean }) {
       ) : (
         <p className="hint">The chip's input/output pins were created from its .hdl.</p>
       )}
+
+      {/* Wiring: nodes that split a bus into bits/ranges, join them back, or give constants. */}
+      <details open className="chip-group">
+        <summary>Wiring</summary>
+        {([
+          ['Split', splitWidth, setSplitWidth, splitRanges, setSplitRanges, 'Outputs, e.g. 0..7, 8..15 (empty = every bit)'],
+          ['Join', joinWidth, setJoinWidth, joinRanges, setJoinRanges, 'Inputs, e.g. 0..7, 8..15 (empty = every bit)'],
+        ] as const).map(([type, width, setWidth, ranges, setRanges, hint]) => (
+          <div
+            key={type}
+            className="palette-item pin-item"
+            draggable
+            onDragStart={(e) => startDrag(e, { kind: 'bus', type, params: { width, ranges } })}
+          >
+            <div className="pin-item-title">{type}</div>
+            <div className="pin-item-fields">
+              {widthSelect(width, setWidth, BUS_WIDTHS)}
+              <input value={ranges} placeholder="bits" title={hint} onChange={(e) => setRanges(e.target.value)} aria-label={`${type} ranges`} />
+            </div>
+          </div>
+        ))}
+        {([
+          ['true', true, trueWidth, setTrueWidth],
+          ['false', false, falseWidth, setFalseWidth],
+        ] as const).map(([label, ones, width, setWidth]) => (
+          <div
+            key={label}
+            className="palette-item pin-item"
+            draggable
+            onDragStart={(e) => startDrag(e, { kind: 'bus', type: 'Const', params: { width, ones } })}
+          >
+            <div className="pin-item-title">{label} (constant)</div>
+            <div className="pin-item-fields">{widthSelect(width, setWidth, BUS_WIDTHS)}</div>
+          </div>
+        ))}
+      </details>
 
       {/* One collapsible section per Nand2Tetris project (<details> is built-in HTML). */}
       {CHIP_GROUPS.map((group) => (

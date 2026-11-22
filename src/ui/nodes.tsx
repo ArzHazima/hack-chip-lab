@@ -77,7 +77,7 @@ function ChipSymbol({ layout }: { layout: ChipLayout }) {
 }
 
 function ChipNode({ data }: NodeProps<ChipNodeT>) {
-  const layout = useMemo(() => chipLayout(data.type), [data.type])
+  const layout = useMemo(() => chipLayout(data.type, data.params), [data.type, data.params])
   const { shape, w, h, pins } = layout
   const isBox = shape === 'box'
   // Output labels sit above the lead line on gates/Mux (the symbol's tip is in the way);
@@ -97,12 +97,13 @@ function ChipNode({ data }: NodeProps<ChipNodeT>) {
         <ChipSymbol layout={layout} />
         {isBox && (
           <div className="box-title" style={{ width: w }}>
-            {data.type}
+            {layout.title ?? data.type}
           </div>
         )}
         {pins.map((p) => {
           // Symbols mark buses with thick leads; only boxes spell out the width.
-          const text = isBox ? label(p.name, p.width) : p.name
+          // Range pins of Split/Join are already named "[0..7]"; the others get "[16]" appended.
+          const text = isBox && !p.name.startsWith('[') ? label(p.name, p.width) : p.name
           let style: CSSProperties
           if (p.side === 'bottom') style = { left: p.x + 4, top: p.y - 13 }
           else if (p.io === 'in') style = { left: p.leadX + 3, top: p.y - 6 }
