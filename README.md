@@ -3,8 +3,9 @@
 A web app for **building Nand2Tetris chips visually**: drag built-in chips onto a canvas, wire them
 together, and check the result against the exercise's own `.tst` / `.cmp` files, with a ✅ / ❌ for every row.
 
-> _Screenshot placeholder: save a screenshot as `docs/screenshot.png` and replace this line with
-> `![Hack Chip Lab](docs/screenshot.png)`._
+![Hack Chip Lab: a hand-wired Mirror16 chip (Split + Join) with all 7 test rows passing](docs/screenshot.png)
+
+_A bit-reversal chip built from Split and Join, with its `.tst` / `.cmp` results (7 / 7 rows passed)._
 
 ## Run it
 
