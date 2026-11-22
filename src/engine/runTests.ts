@@ -2,7 +2,7 @@
 
 import type { CmpFile } from './cmp'
 import type { Circuit } from './circuit'
-import { CircuitError, simulate, validateCircuit } from './simulate'
+import { CircuitError, evaluate, orderChips, validateCircuit } from './simulate'
 
 export interface RowResult {
   index: number // 0-based row index
@@ -41,6 +41,9 @@ export function runTests(circuit: Circuit, cmp: CmpFile): TestRun {
   }
   if (errors.length) throw new CircuitError(errors)
 
+  // Plan ONCE. (Validating and planning inside the row loop made a run cost O(rows x wires x chips).)
+  const order = orderChips(circuit)
+
   const isInput = (name: string) => inPins.some((p) => p.name === name)
   const rows = cmp.rows.map((row, index): RowResult => {
     const inputs: Record<string, number> = {}
@@ -48,7 +51,8 @@ export function runTests(circuit: Circuit, cmp: CmpFile): TestRun {
     cmp.columns.forEach((name, i) => {
       ;(isInput(name) ? inputs : expected)[name] = row.values[i]
     })
-    const { outputs: actual, wireValues } = simulate(circuit, inputs)
+    // Fresh state per row: rows of a combinational table are independent of each other.
+    const { outputs: actual, wireValues } = evaluate(circuit, order, inputs, new Map())
     const failedOutputs = Object.keys(expected).filter((n) => actual[n] !== expected[n])
     return { index, inputs, expected, actual, pass: failedOutputs.length === 0, failedOutputs, wireValues }
   })

@@ -35,7 +35,9 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
 - **Clocked simulation**: input pins on the board have a number box (the value fed to the circuit). **Tick** = chips
   sample inputs, **Tock** = sampled values become outputs (clock goes 0 → 0+ → 1 → 1+ ...), **Step** = tick+tock,
   **Reset** clears all state. Wires/pins show live values; every DFF/PC shows a "stored: N" badge. Editing the circuit
-  restarts the simulation. **Run** (combinational .cmp rows) refuses circuits that contain clocked chips.
+  restarts the simulation. **Run** clocks the circuit itself only through a .tst script (`tick` / `tock` /
+  `ticktock`). Without a .tst (manual mode, or a chip that has no .tst) Run evaluates the .cmp as a combinational
+  table and therefore refuses circuits that contain clocked chips (use Tick / Tock / Step by hand instead).
 - **Exercise folders (chip selector)**: **Load folder** (`webkitdirectory`), **Files…** (multi-select) or drag & drop
   a folder/files onto the page. Files are grouped by base name into chips `{name, hdl, tst, cmp}`
   (`groupExerciseFiles`); a chip with a missing file is still listed with ⚠ and which file is missing. Loading
@@ -46,13 +48,17 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
   - uses the chip's own .cmp/.tst (no separate upload); the banner above the board always shows
     "Chip: X · CMP: … · TST: … · HDL: …" with ⚠ for missing files;
   - gives every chip its OWN circuit. Switching saves the current one (memory + localStorage key
-    `hacklab:circuit:<chip>`, all in try/catch; manual mode uses `__manual__`) and restores the other. Autosave
+    `hacklab:circuit:<chip name>#<interface hash>`, all in try/catch; manual mode uses `__manual__`) and restores the
+    other. The hash (`interfaceHash`, from the IN/OUT names and widths, pin order ignored) means a same-named chip with
+    a different interface, e.g. from another exercise folder, starts on a fresh board and never restores a foreign
+    circuit (circuits saved by older versions under the plain-name key are simply no longer found). Autosave
     runs 400 ms after a change and on `pagehide`. A restored circuit is reconciled with the current .hdl
     (missing pins added, removed pins deleted with their wires, widths fixed).
 - **Run** with a chip selected: runs its .tst (`runExercise`: parseTst → runTst → compareToCmp) and compares with its
   .cmp, ✅/❌ per row; clicking a row colours the board from that `output`'s snapshot. Without a .tst the .cmp is used
-  as a plain combinational table. Unknown .tst commands give a yellow warning (the command and any `{ }` block are
-  skipped). Without a chip, Run uses the manually uploaded .cmp exactly as before.
+  as a plain combinational table. The yellow warning box lists unknown .tst commands (skipped together with any `{ }`
+  block), `set` values that do not fit the pin width, and `%B`/`%X` columns that cut off digits. Without a chip, Run
+  uses the manually uploaded .cmp exactly as before.
 - The app is GENERIC: it must never hardcode chip or exercise names. Any folder of Name.hdl/.tst/.cmp must work.
 - Later stages (do NOT build unless asked): saving a user circuit as a reusable chip, `.hdl` export, 3D view.
 
@@ -71,7 +77,7 @@ src/
     simulate.ts    # validation, evaluation order (planOrder), evaluate(); stateless simulate()
     sequential.ts  # Simulator: per-instance state, eval/tick/tock/step/reset, stored()
     cmp.ts         # .cmp parser (combinational tables)
-    runTests.ts    # run all .cmp rows against a circuit → results
+    runTests.ts    # run all .cmp rows against a circuit → results (plans once, evaluate() per row)
     tst.ts         # .tst subset (set/eval/tick/tock/output/repeat/output-list) + compareToCmp
     hdl.ts         # .hdl INTERFACE parser (IN/OUT only)
     bus.ts         # Split / Join / Const: busDef (pins+eval from params), parseRanges, busErrors (validation)
@@ -83,7 +89,7 @@ src/
     busParams.ts     # node data (ranges text) → engine ChipParams; pins of any node (defOfData)
     exercisePins.ts  # pins from an HDL interface; reconcile a saved circuit with a changed interface
     fileLoading.ts   # folder/file pickers and drag & drop (walks dropped folders)
-    storage.ts       # safe localStorage autosave per chip
+    storage.ts       # safe localStorage autosave; chipSlot = chip name + interface hash
     runView.ts       # engine results → results-table rows; ChipBanner / ExpectedPanel / ResultsTable
   App.tsx
 tests/         # end-to-end tests; fixtures/buses/ = 3 INVENTED chips (hdl/tst/cmp), never the user's files
@@ -106,8 +112,19 @@ tests/         # end-to-end tests; fixtures/buses/ = 3 INVENTED chips (hdl/tst/c
   Overlap on a **Split** is allowed (reading a bit twice is harmless). A wire into/out of a range pin is
   width-checked like any wire.
 - `%D` output is signed only for 16-bit pins; narrower buses (sel[3]) print unsigned.
-- `.tst`: `repeat N { }` capped at 1,000,000 commands. `set` values: decimal, `%D`, `%B`, `%X`. `output-list` formats
-  `%B %D %X %S` (`name%B2.1.2` = pad, length, pad). Unknown commands (while, if ...) → warning and skipped; bus
+- Every pin and bus is 1..16 bits wide (`MAX_WIDTH` in chips.ts; values are masked with 32-bit operators, a wider mask
+  would silently be 0). The .hdl parser rejects `IN a[17]`, auto-created pins re-check it, and `validateCircuit`
+  rejects any circuit pin outside 1..16.
+- Cost of running a .cmp: `runTests` validates and plans ONCE (`validateCircuit` + `orderChips`) and then calls
+  `evaluate()` per row; `validateCircuit` is O(C + W + P) (Map lookups, error text built only on an error). Never put
+  validation or planning inside a per-row loop (`perf.test.ts` guards this).
+- .hdl: every `IN`/`OUT` declaration must end with `;`; one that does not is a parse error, never silently dropped.
+- `.tst`: `repeat N { }` capped at 1,000,000 commands. Commands: `set`, `eval`, `tick`, `tock`, `ticktock` (= tick then
+  tock), `output`, `output-list`, `repeat`. `set` values: decimal, `%D`, `%B`, `%X`; a value that does not fit the pin
+  width is cut (mask) and reported as a warning, once per distinct message. `output-list` formats
+  `%B %D %X %S` (`name%B2.1.2` = pad, length, pad); a new `output-list` REPLACES the active columns (rows use the list
+  in effect when `output` ran; `Tst.outputList` is the last one), and `%B`/`%X` columns too short for the value give a
+  warning. Unknown commands (while, if ...) → warning and skipped; bus
   indexing (`set a[0] 1`) is an error. Output rows and .cmp rows are compared as trimmed text cells, case-insensitive
   (hex), header ignored; works for sequential .cmp files too (`time` column, `0+`).
 - `.cmp` format: header row `|  a  |  b  | out |`, then value rows. Values are binary strings

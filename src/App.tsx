@@ -26,7 +26,7 @@ import { maxIdNumber, pinsFromInterface, reconcilePins } from './ui/exercisePins
 import { filesFromDrop, hasFiles, readExerciseFiles } from './ui/fileLoading'
 import { edgeWidth, flowToCircuit, inputValues } from './ui/flowToCircuit'
 import { fromExercise, fromTestRun } from './ui/runView'
-import { loadCircuit, MANUAL_SLOT, saveCircuit, type SavedCircuit } from './ui/storage'
+import { chipSlot, loadCircuit, MANUAL_SLOT, saveCircuit, type SavedCircuit } from './ui/storage'
 import type { AppNode, DragItem, RunView } from './ui/types'
 import './index.css'
 
@@ -47,6 +47,8 @@ export default function App() {
   const [exercises, setExercises] = useState<ExerciseChip[]>([])
   const [activeName, setActiveName] = useState<string | null>(null)
   const [autoPins, setAutoPins] = useState(false) // true when the pins came from the chip's .hdl
+  // Where the board on screen is saved: MANUAL_SLOT, or "<chip name>#<interface fingerprint>".
+  const [activeSlot, setActiveSlot] = useState(MANUAL_SLOT)
   const active = useMemo(() => exercises.find((c) => c.name === activeName) ?? null, [exercises, activeName])
   // Every slot's circuit lives here while the page is open (and in localStorage across visits).
   const memory = useRef(new Map<string, SavedCircuit>())
@@ -133,7 +135,7 @@ export default function App() {
 
   // ---- Per-chip circuits: save current, restore another ----
   const persist = () => {
-    const slot = activeName ?? MANUAL_SLOT
+    const slot = activeSlot
     const data: SavedCircuit = { nodes: deselect(nodes), edges: deselect(edges) }
     memory.current.set(slot, data)
     saveCircuit(slot, data) // try/catch inside: works without localStorage
@@ -144,7 +146,7 @@ export default function App() {
   useEffect(() => {
     const t = setTimeout(() => persistRef.current(), 400)
     return () => clearTimeout(t)
-  }, [nodes, edges, activeName])
+  }, [nodes, edges, activeSlot])
   useEffect(() => {
     const save = () => persistRef.current()
     window.addEventListener('pagehide', save)
@@ -154,8 +156,9 @@ export default function App() {
   /** Make `target` (a chip name, or null for manual mode) the active board. */
   const switchTo = (target: string | null, list: ExerciseChip[] = exercises) => {
     persist() // keep what the user built for the chip we are leaving
-    const slot = target ?? MANUAL_SLOT
     const chip = target ? (list.find((c) => c.name === target) ?? null) : null
+    // The slot includes the chip's interface, so a same-named chip with other pins starts on a fresh board.
+    const slot = chip ? chipSlot(chip) : MANUAL_SLOT
     const saved = memory.current.get(slot) ?? loadCircuit(slot)
     let nextNodes = saved?.nodes ?? []
     let nextEdges = saved?.edges ?? []
@@ -181,6 +184,7 @@ export default function App() {
     setNodes(deselect(nextNodes))
     setEdges(deselect(nextEdges))
     setActiveName(target)
+    setActiveSlot(slot)
     setAutoPins(auto)
     setErrors(problems)
     setWarnings([])

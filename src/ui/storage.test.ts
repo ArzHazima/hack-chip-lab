@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadCircuit, saveCircuit, type SavedCircuit } from './storage'
+import { chipSlot, loadCircuit, MANUAL_SLOT, saveCircuit, type SavedCircuit } from './storage'
 
 const circuit: SavedCircuit = {
   nodes: [{ id: 'And1', type: 'chip', position: { x: 1, y: 2 }, data: { type: 'And' } }],
@@ -36,5 +36,52 @@ describe('per-chip circuit storage', () => {
     expect(loadCircuit('A')).toBeNull()
     vi.stubGlobal('localStorage', { getItem: () => '{"nodes":5}', setItem: () => {} })
     expect(loadCircuit('A')).toBeNull() // wrong shape is rejected, not trusted
+  })
+})
+
+describe('storage slot of a chip identifies its interface', () => {
+  const hdl = (text: string) => ({ name: 'Mux', hdl: { text } })
+  const store = () => {
+    const m = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+    })
+    return m
+  }
+
+  it('same name + same IN/OUT pins -> same slot, whatever PARTS says or how the file is formatted', () => {
+    const a = chipSlot(hdl('CHIP Mux { IN a, b, sel; OUT out; PARTS: Not(in=a, out=x); }'))
+    const b = chipSlot(hdl('// other implementation\nCHIP Mux {\n  IN sel,\n     b, a;   // order does not matter\n  OUT out;\n  PARTS: And(a=a, b=b, out=out);\n}'))
+    expect(a).toBe(b)
+    expect(a).toMatch(/^Mux#[0-9a-f]{8}$/)
+  })
+
+  it('same name but a different interface -> different slot (names, widths, IN vs OUT)', () => {
+    const base = chipSlot(hdl('CHIP Mux { IN a, b, sel; OUT out; }'))
+    expect(chipSlot(hdl('CHIP Mux { IN a[16], b[16], sel; OUT out[16]; }'))).not.toBe(base) // widths
+    expect(chipSlot(hdl('CHIP Mux { IN a, b, sel; OUT o; }'))).not.toBe(base) // pin name
+    expect(chipSlot(hdl('CHIP Mux { IN a, b; OUT sel, out; }'))).not.toBe(base) // same names, other direction
+  })
+
+  it('a circuit saved for one exercise is NOT restored for a same-named chip of another folder', () => {
+    store()
+    const mine: SavedCircuit = { nodes: [{ id: 'And1', type: 'chip', position: { x: 0, y: 0 }, data: { type: 'And' } }], edges: [] }
+    const slotA = chipSlot(hdl('CHIP Mux { IN a, b, sel; OUT out; }'))
+    const slotB = chipSlot(hdl('CHIP Mux { IN a[16], b[16], sel; OUT out[16]; }'))
+    saveCircuit(slotA, mine)
+    expect(loadCircuit(slotB)).toBeNull() // different interface: a fresh board
+    expect(loadCircuit(slotA)).toEqual(mine) // same interface: restored
+  })
+
+  it('a chip without a readable .hdl gets a stable slot of its own', () => {
+    expect(chipSlot({ name: 'X' })).toBe(chipSlot({ name: 'X' }))
+    expect(chipSlot({ name: 'X' })).toBe('X#nohdl')
+    expect(chipSlot({ name: 'X', hdl: { text: 'not hdl at all' } })).toBe('X#nohdl')
+    expect(chipSlot({ name: 'X' })).not.toBe(chipSlot({ name: 'Y' }))
+  })
+
+  it('never collides with the manual board slot', () => {
+    expect(chipSlot({ name: '__manual__' })).not.toBe(MANUAL_SLOT)
   })
 })

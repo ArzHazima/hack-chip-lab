@@ -94,6 +94,32 @@ describe('parseHdlInterface', () => {
     expect(i.outputs).toHaveLength(1)
   })
 
+  it('accepts a 16-bit pin but rejects anything wider with a clear message', () => {
+    expect(parseHdlInterface('CHIP X { IN a[16]; OUT o[16]; }').inputs).toEqual([{ name: 'a', width: 16 }])
+    // values are masked with 32-bit operators, so wider pins would silently turn into 0
+    expect(() => parseHdlInterface('CHIP X { IN a[17]; OUT o; }')).toThrow(/Pin "a" is 17 bits wide; the maximum is 16/)
+    expect(() => parseHdlInterface('CHIP X { IN a; OUT wide[32]; }')).toThrow(/Pin "wide" is 32 bits wide; the maximum is 16/)
+  })
+
+  it('an IN / OUT declaration without its closing ";" is an error, never silently dropped', () => {
+    // the last declaration before PARTS: used to be ignored, leaving the chip with NO outputs
+    expect(() => parseHdlInterface('CHIP X { IN a; OUT out PARTS: }')).toThrow(/missing its closing ";".*OUT out/)
+    // ... and so was one right before the closing brace (no PARTS section)
+    expect(() => parseHdlInterface('CHIP X { IN a; OUT o }')).toThrow(/missing its closing ";"/)
+    // pins spread over several lines, no ";" at the end
+    expect(() => parseHdlInterface('CHIP X {\n  OUT o;\n  IN a[16],\n     b[16]\n  PARTS:\n}')).toThrow(/missing its closing ";".*IN a\[16\]/)
+    // only declaration, unterminated: the error is about the ";", not "no IN or OUT"
+    expect(() => parseHdlInterface('CHIP X { IN a }')).toThrow(/missing its closing ";"/)
+    // a missing ";" between two declarations is also reported
+    expect(() => parseHdlInterface('CHIP X { IN a OUT o; }')).toThrow(HdlParseError)
+  })
+
+  it('correctly terminated declarations (including empty ones and a trailing "}") still parse', () => {
+    expect(parseHdlInterface('CHIP X { IN a; OUT o; }').outputs).toHaveLength(1)
+    expect(parseHdlInterface('CHIP X { IN ; OUT o; }').inputs).toEqual([])
+    expect(parseHdlInterface('CHIP X {\n IN a,\n b;\n OUT o;\n PARTS:\n}').inputs).toHaveLength(2)
+  })
+
   it('reports clear errors', () => {
     expect(() => parseHdlInterface('IN a; OUT b;')).toThrow(HdlParseError)
     expect(() => parseHdlInterface('IN a; OUT b;')).toThrow(/CHIP/)

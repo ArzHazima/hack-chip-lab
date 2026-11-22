@@ -41,6 +41,13 @@ describe('pins from the HDL interface', () => {
     expect(new Set(r.nodes.map((n) => n.id)).size).toBe(r.nodes.length)
   })
 
+  it('refuses to create pins wider than 16 bits (even if the interface object was built by hand)', () => {
+    const wide = { chipName: 'W', inputs: [{ name: 'a', width: 32 }], outputs: [{ name: 'o', width: 1 }] }
+    expect(() => pinsFromInterface(wide, counter())).toThrow(/Pin "a" is 32 bits wide; the maximum is 16/)
+    const ok = { chipName: 'W', inputs: [{ name: 'a', width: 16 }], outputs: [{ name: 'o', width: 1 }] }
+    expect(pinsFromInterface(ok, counter())).toHaveLength(2)
+  })
+
   it('maxIdNumber reads the trailing number of ids', () => {
     expect(maxIdNumber([])).toBe(0)
     expect(maxIdNumber([{ id: 'And7', type: 'chip', position: { x: 0, y: 0 }, data: { type: 'And' } }])).toBe(7)

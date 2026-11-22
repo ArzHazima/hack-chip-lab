@@ -2,9 +2,9 @@
 // topological order (a chip runs only after every chip feeding it has run).
 
 import { busErrors, isBusType } from './bus'
-import { mask } from './chips'
+import { MAX_WIDTH, mask, type ChipDef } from './chips'
 import { chipOf } from './resolve'
-import { describeEndpoint, isChipEndpoint, type ChipInstance, type Circuit, type Endpoint } from './circuit'
+import { describeEndpoint, isChipEndpoint, type ChipInstance, type Circuit, type CircuitPin, type Endpoint } from './circuit'
 
 /** Thrown for any user-fixable circuit problem. `errors` has one message per problem. */
 export class CircuitError extends Error {
@@ -24,41 +24,63 @@ export interface SimResult {
 
 const key = (e: Endpoint): string => (isChipEndpoint(e) ? `${e.chip}.${e.pin}` : `#${e.pin}`)
 
-/** Width of an endpoint, or undefined if it does not exist / is used in the wrong direction. */
-function endpointWidth(c: Circuit, e: Endpoint, role: 'source' | 'target'): number | undefined {
+/**
+ * Width of an endpoint, or undefined if it does not exist / is used in the wrong direction.
+ * `defs` and `pins` are lookup tables built once per validation (O(1) per wire).
+ */
+function endpointWidth(
+  defs: Map<string, ChipDef | undefined>,
+  pins: Map<string, CircuitPin>,
+  e: Endpoint,
+  role: 'source' | 'target',
+): number | undefined {
   if (isChipEndpoint(e)) {
-    const inst = c.chips.find((x) => x.id === e.chip)
-    const def = inst && chipOf(inst)
+    const def = defs.get(e.chip)
     if (!def) return undefined
-    const pins = role === 'source' ? def.outputs : def.inputs
-    return pins.find((p) => p.name === e.pin)?.width
+    return (role === 'source' ? def.outputs : def.inputs).find((p) => p.name === e.pin)?.width
   }
-  const pin = c.pins.find((p) => p.id === e.pin)
+  const pin = pins.get(e.pin)
   // A circuit INPUT pin drives wires (source); a circuit OUTPUT pin receives them (target).
   if (!pin || pin.kind !== (role === 'source' ? 'input' : 'output')) return undefined
   return pin.width
 }
 
-/** Returns every problem found (empty array = valid; cycles are detected in simulate). */
+/**
+ * Returns every problem found (empty array = valid; cycles are detected in planOrder).
+ * Cost is O(C + W + P): chips and pins are looked up in Maps, and error text is only
+ * built when there actually is an error.
+ */
 export function validateCircuit(c: Circuit): string[] {
   const errors: string[] = []
 
+  // One definition per chip instance, built once (chipOf rebuilds Split/Join pins on each call).
+  const defs = new Map<string, ChipDef | undefined>()
   for (const inst of c.chips) {
-    if (!chipOf(inst)) errors.push(`Unknown chip type "${inst.type}" (${inst.id})`)
+    defs.set(inst.id, chipOf(inst))
+    if (!defs.get(inst.id)) errors.push(`Unknown chip type "${inst.type}" (${inst.id})`)
     // Split / Join / Const settings: ranges inside the bus, no overlaps on a Join, no undriven bits.
     if (isBusType(inst.type)) errors.push(...busErrors(inst.id, inst.type, inst.params))
+  }
+  const pins = new Map(c.pins.map((p) => [p.id, p]))
+  for (const p of c.pins) {
+    if (!Number.isInteger(p.width) || p.width < 1 || p.width > MAX_WIDTH) {
+      errors.push(`Pin "${p.name}" is ${p.width} bits wide; the maximum is ${MAX_WIDTH}`)
+    }
   }
 
   const driven = new Set<string>()
   for (const w of c.wires) {
-    const sw = endpointWidth(c, w.from, 'source')
-    const tw = endpointWidth(c, w.to, 'target')
-    const label = `${describeEndpoint(c, w.from)} → ${describeEndpoint(c, w.to)}`
+    const sw = endpointWidth(defs, pins, w.from, 'source')
+    const tw = endpointWidth(defs, pins, w.to, 'target')
     if (sw === undefined || tw === undefined) {
+      const label = `${describeEndpoint(c, w.from)} → ${describeEndpoint(c, w.to)}`
       errors.push(`Invalid wire ${label}: endpoint is missing or used in the wrong direction`)
       continue
     }
-    if (sw !== tw) errors.push(`Width mismatch on wire ${label}: ${sw} bit(s) → ${tw} bit(s)`)
+    if (sw !== tw) {
+      const label = `${describeEndpoint(c, w.from)} → ${describeEndpoint(c, w.to)}`
+      errors.push(`Width mismatch on wire ${label}: ${sw} bit(s) → ${tw} bit(s)`)
+    }
     const k = key(w.to)
     if (driven.has(k)) errors.push(`${describeEndpoint(c, w.to)} is driven by more than one wire`)
     driven.add(k)
@@ -66,7 +88,7 @@ export function validateCircuit(c: Circuit): string[] {
 
   // Every chip input and every circuit output must be driven.
   for (const inst of c.chips) {
-    for (const p of chipOf(inst)?.inputs ?? []) {
+    for (const p of defs.get(inst.id)?.inputs ?? []) {
       if (!driven.has(`${inst.id}.${p.name}`)) {
         errors.push(`Unconnected input pin: ${inst.id}.${p.name}`)
       }
@@ -102,13 +124,21 @@ export const hasSequential = (c: Circuit): boolean => c.chips.some((x) => chipOf
 export function planOrder(c: Circuit): string[] {
   const errors = validateCircuit(c)
   if (errors.length) throw new CircuitError(errors)
+  return orderChips(c)
+}
 
-  const instOf = new Map(c.chips.map((x) => [x.id, x]))
+/**
+ * The ordering step of planOrder, for callers that have ALREADY validated the circuit
+ * (runTests validates once, together with the .cmp columns, then plans once).
+ * Throws CircuitError on a feedback loop that does not pass through a DFF/PC.
+ */
+export function orderChips(c: Circuit): string[] {
+  const registered = new Map(c.chips.map((x) => [x.id, !!chipOf(x)?.seq?.registered]))
   const indegree = new Map<string, number>(c.chips.map((x) => [x.id, 0]))
   const downstream = new Map<string, string[]>()
   for (const w of c.wires) {
     if (!isChipEndpoint(w.from) || !isChipEndpoint(w.to)) continue
-    if (chipOf(instOf.get(w.from.chip)!)?.seq?.registered) continue // breaks the dependency
+    if (registered.get(w.from.chip)) continue // breaks the dependency
     indegree.set(w.to.chip, (indegree.get(w.to.chip) ?? 0) + 1)
     downstream.set(w.from.chip, [...(downstream.get(w.from.chip) ?? []), w.to.chip])
   }

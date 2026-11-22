@@ -47,6 +47,15 @@ describe('Split / Join / Const definitions', () => {
   })
 })
 
+describe('pin widths in a circuit', () => {
+  it('a circuit pin wider than 16 bits is an error; 16 is fine', () => {
+    const wide = addPin(emptyCircuit(), 'a', 'a', 'input', 17)
+    expect(validateCircuit(wide)).toEqual(['Pin "a" is 17 bits wide; the maximum is 16'])
+    expect(validateCircuit(addPin(emptyCircuit(), 'a', 'a', 'input', 16))).toEqual([])
+    expect(validateCircuit(addPin(emptyCircuit(), 'a', 'a', 'input', 0))[0]).toMatch(/Pin "a"/)
+  })
+})
+
 describe('busErrors (validation of the settings)', () => {
   const r = (lo: number, hi = lo) => ({ lo, hi })
 

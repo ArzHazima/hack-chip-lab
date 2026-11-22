@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { addChip, addPin, connect, emptyCircuit, type Circuit } from './circuit'
 import { CircuitError, simulate } from './simulate'
 import { Simulator } from './sequential'
+import { runExercise } from './exercise'
 import { compareToCmp, parseTst, runTst } from './tst'
 
 // ---------------------------------------------------------------------------
@@ -354,6 +355,69 @@ describe('.tst parser and runner', () => {
     expect(() => parseTst('set in banana')).toThrow(/Bad value/)
     expect(() => parseTst('output-list out%Q1.1.1;')).toThrow(/Bad output-list/)
     expect(() => parseTst('tick; }')).toThrow(/Unexpected "}"/)
+  })
+
+  it('ticktock is tick followed by tock (and is not reported as an unknown command)', () => {
+    const t = parseTst('output-list time%S1.4.1 out%B1.1.1; repeat 3 { ticktock; } output;')
+    expect(t.warnings).toEqual([])
+    const out = runTst(toggleCircuit(), t)
+    // 3 full cycles: time 3, and the toggle went 0 -> 1 -> 0 -> 1
+    expect(out.rows[0].split('|').slice(1, -1).map((s) => s.trim())).toEqual(['3', '1'])
+  })
+
+  it('a second output-list REPLACES the active columns (rows use the list in effect)', () => {
+    let c = emptyCircuit()
+    c = addPin(c, 'a', 'a', 'input')
+    c = addPin(c, 'b', 'b', 'input')
+    const t = parseTst(
+      'output-list a%B1.1.1 b%B1.1.1; set a 1, set b 0, output; output-list b%B1.1.1; output;',
+    )
+    expect(t.outputList.map((col) => col.name)).toEqual(['b']) // the list that is active at the end
+    expect(runTst(c, t).rows).toEqual(['| 1 | 0 |', '| 0 |'])
+  })
+
+  describe('warnings instead of silent truncation', () => {
+    const pins = () => {
+      let c = emptyCircuit()
+      c = addPin(c, 'sel', 'sel', 'input', 2)
+      c = addPin(c, 'w', 'w', 'input', 16)
+      c = addPin(c, 'x', 'x', 'input', 4)
+      return c
+    }
+    const warningsOf = (script: string) => runTst(pins(), parseTst(script)).warnings
+
+    it('set with a value that does not fit the pin width warns (and says what it was cut to)', () => {
+      const w = warningsOf('set sel 5; set w 70000; set sel -3;')
+      expect(w).toHaveLength(3)
+      expect(w[0]).toMatch(/set sel 5: .*does not fit in 2 bits.*cut to 1/)
+      expect(w[1]).toMatch(/set w 70000: .*16 bits/)
+      expect(w[2]).toMatch(/set sel -3/)
+    })
+
+    it('values that fit never warn, including negative numbers (two\'s complement) and the largest value', () => {
+      expect(warningsOf('set sel 3; set sel 0; set sel -2; set w -1; set w 65535; set w %B1111111111111111; set x %XF;')).toEqual([])
+    })
+
+    it('the same warning is reported once, even inside a long repeat', () => {
+      expect(warningsOf('repeat 100 { set sel 5; }')).toHaveLength(1)
+    })
+
+    it('%B / %X that cut off digits warn; wide enough columns do not', () => {
+      // x = 12 = %B1100 (4 digits) = 0xC (1 digit)
+      const cut = warningsOf('output-list x%B1.2.1 x%X1.1.1; set x 12; output;')
+      expect(cut).toHaveLength(1) // only %B1.2.1 cuts digits; one hex digit is enough for 0xC
+      expect(cut[0]).toMatch(/x%B1\.2\.1: value 12 needs 4 digits but only 2 are shown/)
+      // w = 255 = 0xFF needs 2 hex digits
+      expect(warningsOf('output-list w%X1.1.1; set w 255; output;')[0]).toMatch(/w%X1\.1\.1: value 255 needs 2 digits but only 1 is shown/)
+      expect(warningsOf('output-list x%B1.4.1 w%X1.4.1 w%D1.6.1; set x 12, set w 255; output;')).toEqual([])
+    })
+
+    it('runExercise reports these warnings together with the parser warnings', () => {
+      const run = runExercise(pins(), 'output-list x%B1.2.1; frob; set x 12; output;', '|x|\n| 00 |')
+      expect(run.warnings).toHaveLength(2)
+      expect(run.warnings[0]).toMatch(/Unknown command "frob"/)
+      expect(run.warnings[1]).toMatch(/needs 4 digits/)
+    })
   })
 
   it('unknown commands become warnings and are skipped (including their { } block)', () => {

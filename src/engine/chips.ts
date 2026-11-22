@@ -37,6 +37,12 @@ export interface ChipDef {
   seq?: SeqBehavior
 }
 
+/**
+ * Widest bus / pin supported. Values are plain numbers masked with 32-bit operators
+ * (`1 << width`), so a 32-bit mask would silently be 0; every width is capped at 16 instead.
+ */
+export const MAX_WIDTH = 16
+
 /** Keep only the low `width` bits of v (also fixes negatives from `~`). */
 export function mask(v: number, width: number): number {
   return (v & ((1 << width) - 1)) >>> 0

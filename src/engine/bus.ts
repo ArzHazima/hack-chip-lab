@@ -7,14 +7,14 @@
 // They are not in the CHIPS table because their pins depend on settings (`ChipParams`):
 // `busDef` builds an ordinary ChipDef for one instance, so the simulator treats them like any chip.
 
-import { mask, type ChipDef, type PinDef } from './chips'
+import { MAX_WIDTH, mask, type ChipDef, type PinDef } from './chips'
 import type { ChipParams, Range } from './circuit'
 
 export const BUS_TYPES = ['Split', 'Join', 'Const'] as const
 export const isBusType = (type: string): boolean => (BUS_TYPES as readonly string[]).includes(type)
 
-/** Widest bus supported (values are plain JS numbers masked with 32-bit operators). */
-export const MAX_BUS_WIDTH = 16
+/** Widest bus supported (same limit as every pin; see MAX_WIDTH). */
+export const MAX_BUS_WIDTH = MAX_WIDTH
 
 export const rangeWidth = (r: Range): number => r.hi - r.lo + 1
 /** Pin name of a range: `[3]` or `[0..7]`. It doubles as the label shown on the board. */

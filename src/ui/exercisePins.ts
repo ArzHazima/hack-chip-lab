@@ -1,7 +1,7 @@
 // Creating / updating the board's input and output pins from a chip's HDL interface.
 
 import type { Edge } from '@xyflow/react'
-import type { HdlInterface, PinSpec } from '../engine/hdl'
+import { assertInterfaceWidths, type HdlInterface, type PinSpec } from '../engine/hdl'
 import type { AppNode } from './types'
 
 const ROW = 90 // vertical gap between pins on the board
@@ -23,6 +23,7 @@ function pinNode(kind: 'inpin' | 'outpin', spec: PinSpec, index: number, id: num
 
 /** A fresh board with one pin per IN / OUT declaration. `nextId` supplies unique numbers. */
 export function pinsFromInterface(iface: HdlInterface, nextId: () => number): AppNode[] {
+  assertInterfaceWidths(iface) // throws HdlParseError for a pin wider than 16 bits
   return [
     ...iface.inputs.map((p, i) => pinNode('inpin', p, i, nextId())),
     ...iface.outputs.map((p, i) => pinNode('outpin', p, i, nextId())),

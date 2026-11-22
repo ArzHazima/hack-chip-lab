@@ -2,6 +2,7 @@
 // windows), so every access is wrapped in try/catch and the app works without it.
 
 import type { Edge } from '@xyflow/react'
+import { parseHdlInterface, type HdlInterface } from '../engine/hdl'
 import type { AppNode } from './types'
 
 export interface SavedCircuit {
@@ -13,6 +14,34 @@ export interface SavedCircuit {
 export const MANUAL_SLOT = '__manual__'
 
 const key = (slot: string) => `hacklab:circuit:${slot}`
+
+/**
+ * Short fingerprint of a chip's INTERFACE (IN/OUT names and widths; PARTS is ignored; the order
+ * of the pins does not matter). 32-bit FNV-1a: tiny, and good enough to tell two exercises apart.
+ */
+export function interfaceHash(iface: HdlInterface | null): string {
+  if (!iface) return 'nohdl'
+  const side = (pins: { name: string; width: number }[]) => pins.map((p) => `${p.name}[${p.width}]`).sort().join(',')
+  const text = `in:${side(iface.inputs)}|out:${side(iface.outputs)}`
+  let h = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193)
+  return (h >>> 0).toString(16).padStart(8, '0')
+}
+
+/**
+ * The storage slot of a chip's circuit: its name PLUS its interface fingerprint. Two exercise
+ * folders that both contain a chip called "Mux" but with different pins therefore never
+ * restore each other's circuit. A chip without a readable .hdl gets the fingerprint "nohdl".
+ */
+export function chipSlot(chip: { name: string; hdl?: { text: string } }): string {
+  let iface: HdlInterface | null = null
+  try {
+    iface = chip.hdl ? parseHdlInterface(chip.hdl.text) : null
+  } catch {
+    /* unreadable .hdl: use the "nohdl" slot; the app shows the parse error separately */
+  }
+  return `${chip.name}#${interfaceHash(iface)}`
+}
 
 export function saveCircuit(slot: string, data: SavedCircuit): void {
   try {

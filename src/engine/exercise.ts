@@ -82,7 +82,7 @@ export function runExercise(circuit: Circuit, tstText: string, cmpText: string):
     passed: rows.filter((r) => r.pass).length,
     total: rows.length,
     columns: tst.outputList.map((c) => c.name),
-    warnings: tst.warnings,
+    warnings: [...tst.warnings, ...out.warnings], // parser warnings first, then run-time ones
     message: cmp.message,
   }
 }

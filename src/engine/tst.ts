@@ -4,11 +4,12 @@
 //   set in 1, set load 1, tick, output; tock, output;
 //   repeat 3 { tick, tock, output; }
 //
-// Supported: set, eval, tick, tock, output, repeat N { ... }, output-list.
+// Supported: set, eval, tick, tock, ticktock, output, repeat N { ... }, output-list.
 // load / output-file / compare-to / echo / clear-echo are accepted and ignored.
 // Any other command (while, if ...) is skipped and reported in `Tst.warnings`, not an error.
 // Bus indexing (set a[0] 1) IS an error, because skipping it would silently give wrong results.
 
+import { mask } from './chips'
 import type { Circuit } from './circuit'
 import { CircuitError } from './simulate'
 import { Simulator } from './sequential'
@@ -22,7 +23,8 @@ export class TstParseError extends Error {
 
 export type TstCommand =
   | { op: 'set'; pin: string; value: number }
-  | { op: 'eval' | 'tick' | 'tock' | 'output' }
+  | { op: 'eval' | 'tick' | 'tock' | 'ticktock' | 'output' } // ticktock = tick then tock
+  | { op: 'output-list'; cols: OutputCol[] } // replaces the columns used by later `output` commands
   | { op: 'repeat'; count: number; body: TstCommand[] }
 
 /** One column of the output-list: `name%B2.1.2` = binary, 2 spaces left, 1 digit, 2 spaces right. */
@@ -35,6 +37,8 @@ export interface OutputCol {
 }
 
 export interface Tst {
+  /** The output-list in effect at the END of the script (the last one declared). Earlier `output`
+   *  commands use the list that was active when they ran (see the 'output-list' command). */
   outputList: OutputCol[]
   commands: TstCommand[]
   warnings: string[] // e.g. unknown commands that were ignored
@@ -64,7 +68,7 @@ function parseCol(tok: string): OutputCol {
 export function parseTst(text: string): Tst {
   const toks = tokenize(text)
   let pos = 0
-  const outputList: OutputCol[] = []
+  let outputList: OutputCol[] = []
   const warnings: string[] = []
 
   const skipSeparators = () => {
@@ -108,13 +112,16 @@ export function parseTst(text: string): Tst {
       if (IGNORED.has(word)) {
         args()
       } else if (word === 'output-list') {
-        outputList.push(...args().map(parseCol))
+        // A new output-list REPLACES the previous one (it does not add columns to it).
+        const cols = args().map(parseCol)
+        outputList = cols
+        cmds.push({ op: 'output-list', cols })
       } else if (word === 'set') {
         const a = args()
         if (a.length !== 2) throw new TstParseError('"set" needs a pin and a value: set in 5')
         if (a[0].includes('[')) throw new TstParseError(`Bus indexing "${a[0]}" is not supported`)
         cmds.push({ op: 'set', pin: a[0], value: parseValue(a[1]) })
-      } else if (word === 'eval' || word === 'tick' || word === 'tock' || word === 'output') {
+      } else if (word === 'eval' || word === 'tick' || word === 'tock' || word === 'ticktock' || word === 'output') {
         cmds.push({ op: word })
       } else if (word === 'repeat') {
         const count = toks[pos]
@@ -147,6 +154,7 @@ export interface TstOutput {
   header: string
   rows: string[] // one line per `output`, like "| 0+  |  0  |  0  |  0  |"
   snapshots: Snapshot[] // parallel to `rows`
+  warnings: string[] // values that did not fit and digits that were cut off (each reported once)
 }
 
 const MAX_COMMANDS = 1_000_000 // guards against `repeat 999999999 { ... }` hanging the tab
@@ -173,14 +181,26 @@ export function runTst(circuit: Circuit, tst: Tst): TstOutput {
   const inputs: Record<string, number> = Object.fromEntries(inPins.map((p) => [p.name, 0]))
   const rows: string[] = []
   const snapshots: Snapshot[] = []
+  const warnings = new Set<string>() // a Set, so a warning inside a long repeat is reported once
   let budget = MAX_COMMANDS
 
+  let active: OutputCol[] = [] // the output-list currently in effect
   const row = (): string => {
     const r = sim.eval(inputs)
-    const cells = tst.outputList.map((col) => {
+    const cells = active.map((col) => {
       if (col.name === 'time') return formatCell(col, sim.time, 1)
       const v = col.name in inputs ? inputs[col.name] : r.outputs[col.name]
       if (v === undefined) throw new CircuitError([`.tst output-list names unknown pin "${col.name}"`])
+      // %B / %X show exactly `len` digits: a bigger value would silently lose its leading digits.
+      if (col.fmt === 'B' || col.fmt === 'X') {
+        const needed = (+v >>> 0).toString(col.fmt === 'B' ? 2 : 16).length
+        if (needed > col.len) {
+          warnings.add(
+            `${col.name}%${col.fmt}${col.left}.${col.len}.${col.right}: value ${v} needs ${needed} digits but only ` +
+              `${col.len} ${col.len === 1 ? 'is' : 'are'} shown; the leading digits are cut off`,
+          )
+        }
+      }
       return formatCell(col, v, widthOf.get(col.name) ?? 1)
     })
     snapshots.push({ time: sim.time, inputs: { ...inputs }, outputs: r.outputs, wireValues: r.wireValues })
@@ -195,11 +215,23 @@ export function runTst(circuit: Circuit, tst: Tst): TstOutput {
           if (!inPins.some((p) => p.name === cmd.pin)) {
             throw new CircuitError([`.tst sets "${cmd.pin}", which is not an input pin of the circuit`])
           }
-          inputs[cmd.pin] = cmd.value
+          {
+            const w = widthOf.get(cmd.pin) ?? 1
+            // Fits = representable in w bits, unsigned (0..2^w-1) or two's complement (-2^(w-1)..-1).
+            if (cmd.value >= 2 ** w || cmd.value < -(2 ** (w - 1))) {
+              warnings.add(
+                `set ${cmd.pin} ${cmd.value}: the value does not fit in ${w} bit${w === 1 ? '' : 's'} ` +
+                  `(pin "${cmd.pin}"); it is cut to ${mask(cmd.value, w)}`,
+              )
+            }
+            inputs[cmd.pin] = mask(cmd.value, w) // the table shows what the circuit really received
+          }
           break
         case 'eval': sim.eval(inputs); break
         case 'tick': sim.tick(inputs); break
         case 'tock': sim.tock(inputs); break
+        case 'ticktock': sim.tick(inputs); sim.tock(inputs); break
+        case 'output-list': active = cmd.cols; break
         case 'output': rows.push(row()); break
         case 'repeat':
           for (let i = 0; i < cmd.count; i++) exec(cmd.body)
@@ -216,7 +248,7 @@ export function runTst(circuit: Circuit, tst: Tst): TstOutput {
       return ' '.repeat(pad >> 1) + c.name + ' '.repeat(pad - (pad >> 1))
     })
     .join('|')}|`
-  return { header, rows, snapshots }
+  return { header, rows, snapshots, warnings: [...warnings] }
 }
 
 // ---------------------------------------------------------------------------
