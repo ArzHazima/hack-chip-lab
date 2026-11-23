@@ -10,7 +10,9 @@ export default function ResultsTable({ run, selected, onSelect }: Props) {
   return (
     <section className="results">
       <div className="results-summary">
-        {run.ok ? '✅' : '❌'} {run.passed} / {run.total} rows passed
+        <span className="results-title">
+          {run.ok ? '✅' : '❌'} Test results: {run.passed} / {run.total} passed
+        </span>
         <span className="muted"> — click a row to show its values on the board</span>
         {run.note && <div className="muted results-note">{run.note}</div>}
       </div>

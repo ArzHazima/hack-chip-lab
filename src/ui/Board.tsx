@@ -42,6 +42,12 @@ function BoardInner({ nodes, edges, onNodesChange, onEdgesChange, onConnect, onD
 
   return (
     <div className="board">
+      {/* Shown only while the board is empty; clicks pass through to the board underneath. */}
+      {nodes.length === 0 && (
+        <div className="board-hint" aria-live="polite">
+          Pick a chip on the left or drag gates here
+        </div>
+      )}
       <ReactFlow
         nodes={nodes}
         edges={edges}

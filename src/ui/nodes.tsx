@@ -5,6 +5,7 @@ import { useContext, useMemo, type CSSProperties, type ReactNode } from 'react'
 import { Handle, Position, type NodeProps, type NodeTypes } from '@xyflow/react'
 import { BoardContext } from './BoardContext'
 import { chipLayout, LEAD, type ChipLayout } from './chipLayout'
+import { bitsMsbFirst, formatValue, toggleBit, type FormatMode } from './formatValue'
 import type { ChipNodeT, InPinNodeT, OutPinNodeT } from './types'
 
 const label = (name: string, width: number) => (width > 1 ? `${name}[${width}]` : name)
@@ -130,34 +131,98 @@ function ChipNode({ data }: NodeProps<ChipNodeT>) {
   )
 }
 
+
+/** A value in the format chosen in the toolbar. "All" = binary on one line, decimal and hex under it. */
+function ValueLines({ value, width, format }: { value: number; width: number; format: FormatMode }) {
+  const f = formatValue(value, width)
+  if (format === 'binary') return <div className="val-main mono">{f.binary}</div>
+  if (format === 'decimal') return <div className="val-main mono">{f.decimal}</div>
+  if (format === 'hex') return <div className="val-main mono">{f.hex}</div>
+  return (
+    <>
+      <div className="val-main mono">{f.binary}</div>
+      <div className="val-sub mono">
+        = {f.decimal} · {f.hex}
+      </div>
+    </>
+  )
+}
+
+/** One toggle button per bit, most significant bit on the left, bit number on top. */
+function BitRow({ value, width, onToggle }: { value: number; width: number; onToggle: (bit: number) => void }) {
+  const bits = bitsMsbFirst(value, width)
+  return (
+    <div className="bit-row nodrag" role="group" aria-label="Input bits, most significant bit first">
+      {bits.map((b, i) => {
+        const bit = width - 1 - i
+        return (
+          <div key={bit} className={`bit-cell${bit % 4 === 3 && i > 0 ? ' group-start' : ''}`}>
+            <span className="bit-index">{bit}</span>
+            <button
+              type="button"
+              className={`bit-btn${b ? ' on' : ''}`}
+              aria-pressed={b === 1}
+              title={`Bit ${bit}: click to turn it ${b ? 'off (0)' : 'on (1)'}`}
+              onClick={() => onToggle(bit)}
+            >
+              {b}
+            </button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function InputPinNode({ id, data }: NodeProps<InPinNodeT>) {
-  const { setInputValue } = useContext(BoardContext)
+  const { setInputValue, format } = useContext(BoardContext)
   const max = 2 ** data.width - 1
+  const value = data.inputValue ?? 0
   return (
     <div className="board-pin in">
-      <span>{label(data.name, data.width)}</span>
-      {/* Value fed to this pin by Tick / Tock / Step. `nodrag` keeps typing from dragging the node. */}
-      <input
-        className="pin-input nodrag"
-        type="number"
-        min={0}
-        max={max}
-        value={data.inputValue ?? 0}
-        aria-label={`Value of ${data.name}`}
-        onChange={(e) => setInputValue(id, Math.min(max, Math.max(0, Math.floor(Number(e.target.value)) || 0)))}
-      />
-      {data.value !== undefined && <b className="pin-value">{data.value}</b>}
+      <div className="pin-head">
+        <span className="pin-name">{label(data.name, data.width)}</span>
+        {/* Decimal value fed to this pin. It and the bit buttons below always show the same number.
+            `nodrag` keeps typing and clicking from dragging the node. */}
+        <label className="pin-dec">
+          decimal
+          <input
+            className="pin-input nodrag"
+            type="number"
+            min={0}
+            max={max}
+            value={value}
+            aria-label={`Decimal value of ${data.name}`}
+            onChange={(e) => setInputValue(id, Math.min(max, Math.max(0, Math.floor(Number(e.target.value)) || 0)))}
+          />
+        </label>
+      </div>
+      <BitRow value={value} width={data.width} onToggle={(bit) => setInputValue(id, toggleBit(value, bit, data.width))} />
+      {(format === 'hex' || format === 'all') && <div className="val-sub mono">{formatValue(value, data.width).hex}</div>}
+      {/* While a test row is selected, show that row's input value too. */}
+      {data.value !== undefined && (
+        <div className="pin-row-value">
+          <span>test row:</span> <ValueLines value={data.value} width={data.width} format={format} />
+        </div>
+      )}
       <Handle type="source" position={Position.Right} id="out" />
     </div>
   )
 }
 
 function OutputPinNode({ data }: NodeProps<OutPinNodeT>) {
+  const { format } = useContext(BoardContext)
   return (
     <div className="board-pin out">
       <Handle type="target" position={Position.Left} id="in" />
-      <span>{label(data.name, data.width)}</span>
-      {data.value !== undefined && <b className="pin-value">{data.value}</b>}
+      <div className="pin-head">
+        <span className="pin-name">{label(data.name, data.width)}</span>
+      </div>
+      {data.value === undefined ? (
+        <div className="pin-empty">value shows after Run, Tick or Step</div>
+      ) : (
+        <ValueLines value={data.value} width={data.width} format={format} />
+      )}
     </div>
   )
 }

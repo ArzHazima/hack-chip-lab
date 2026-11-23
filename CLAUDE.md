@@ -3,9 +3,22 @@
 Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking them against course test files.
 
 ## Product (MVP)
-- Layout: left sidebar = chip palette; center = canvas (the "board") under a chip banner; top bar = Load folder,
-  Files…, chip selector, Upload .cmp (manual mode only), Show expected, clock controls (Clock counter, Tick, Tock,
-  Step, Reset), Delete selected, Run.
+- Layout (top to bottom): **top bar** = app name (left), the SELECTED CHIP as a large dropdown in the center with its
+  CMP / TST / HDL file names under it (⚠ for a missing file; on a free board it shows the uploaded files), and the
+  **? Help** button (right). **Toolbar** with three labelled groups: **Files** (Load folder, Load files, Upload .cmp,
+  Upload .tst), **Run** (▶ Run, Tick, Tock, Step, Reset, Clock counter), **View** (Show expected, Binary / Decimal /
+  Hex / All switch, Delete selected). Below: left **sidebar** (collapsible sections: From your folder, Pins, Wiring,
+  Project 1–3), the **board** in the middle, and the **results table** under it (title "Test results: N / M passed",
+  fixed max height with its own scroll; the board keeps a minimum height of 300 px). **Show expected** adds a panel
+  on the right.
+- UI rules (UI1): a toolbar button that cannot be used is visibly disabled AND its tooltip says why (`Btn` in
+  `Toolbar.tsx`, reasons computed in `App.tsx`). While the board is empty a hint says "Pick a chip on the left or drag
+  gates here". The Help dialog (5 steps) opens by itself on the first visit only (`hacklab:pref:helpSeen`). All colours,
+  font sizes and spacing are CSS variables at the top of `index.css`; no horizontal scroll at 1280 px.
+- **Number format** (`ui/formatValue.ts`, toolbar switch, remembered in `hacklab:pref:format`): Binary (grouped by 4
+  bits), Decimal, Hex or All (default). It applies to pin nodes AND to the value labels of wires wider than 1 bit.
+  Input pins have a row of bit buttons (MSB on the left, bit index on top) that stay in sync with the decimal box.
+  Output pins show their value after Run / Tick / Step. Pin widths are 1..16, so a 16-bit pin node is wide.
 - User drags chips from the palette onto the canvas, adds named input/output pins, and connects them with wires.
 - Click a chip, pin or wire to select it (amber highlight). Delete / Backspace or the **Delete selected** button removes
   the selection plus any wires attached to deleted nodes. Keys are ignored while typing in a text field. Deletion is
@@ -45,8 +58,10 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
   - reads ONLY the interface of its .hdl (`parseHdlInterface`: IN/OUT names + widths; PARTS is ignored) and creates
     matching input/output pins (left/right columns). The manual Input/Output pin items are hidden while pins are
     automatic and come back when no chip is selected or the .hdl is missing/unreadable;
-  - uses the chip's own .cmp/.tst (no separate upload); the banner above the board always shows
-    "Chip: X · CMP: … · TST: … · HDL: …" with ⚠ for missing files;
+  - uses the chip's own .cmp/.tst (no separate upload: Upload .cmp / .tst are disabled while a chip is selected); the
+    top bar always shows the chip name with its CMP / TST / HDL file names, ⚠ for missing files. On a free board
+    (no chip) you can upload a .cmp and a .tst by hand; with a .tst the run goes through `runExercise`, so clocked
+    .cmp files (time column) work too;
   - gives every chip its OWN circuit. Switching saves the current one (memory + localStorage key
     `hacklab:circuit:<chip name>#<interface hash>`, all in try/catch; manual mode uses `__manual__`) and restores the
     other. The hash (`interfaceHash`, from the IN/OUT names and widths, pin order ignored) means a same-named chip with
@@ -83,14 +98,15 @@ src/
     bus.ts         # Split / Join / Const: busDef (pins+eval from params), parseRanges, busErrors (validation)
     resolve.ts     # chipOf(instance): CHIPS entry or a bus node built from its params
     exercise.ts    # groupExerciseFiles (Name.hdl/.tst/.cmp → chips) and runExercise (.tst + .cmp)
-  ui/          # React components (Sidebar, Board, TopBar, ResultsTable, ExpectedPanel, nodes)
+  ui/          # React components (TopBar, Toolbar, Sidebar, Board, nodes, ResultsTable, ExpectedPanel, HelpPanel)
+    formatValue.ts   # pure: decimal / grouped binary / hex of a value, bit helpers (toggleBit, bitsMsbFirst)
     chipLayout.ts  # pure geometry: shape, size and pin positions per chip type
     flowToCircuit.ts # React Flow graph → engine Circuit
     busParams.ts     # node data (ranges text) → engine ChipParams; pins of any node (defOfData)
     exercisePins.ts  # pins from an HDL interface; reconcile a saved circuit with a changed interface
     fileLoading.ts   # folder/file pickers and drag & drop (walks dropped folders)
-    storage.ts       # safe localStorage autosave; chipSlot = chip name + interface hash
-    runView.ts       # engine results → results-table rows; ChipBanner / ExpectedPanel / ResultsTable
+    storage.ts       # safe localStorage autosave; chipSlot = chip name + interface hash; getPref / setPref
+    runView.ts       # engine results → rows for the results table
   App.tsx
 tests/         # end-to-end tests; fixtures/buses/ = 3 INVENTED chips (hdl/tst/cmp), never the user's files
 ```

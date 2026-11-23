@@ -17,16 +17,18 @@ import { CircuitError, hasSequential } from './engine/simulate'
 import { TstParseError } from './engine/tst'
 import Board from './ui/Board'
 import { BoardContext } from './ui/BoardContext'
-import ChipBanner from './ui/ChipBanner'
 import ExpectedPanel, { type ExpectedTable } from './ui/ExpectedPanel'
 import ResultsTable from './ui/ResultsTable'
 import Sidebar from './ui/Sidebar'
 import TopBar from './ui/TopBar'
+import Toolbar from './ui/Toolbar'
+import HelpPanel from './ui/HelpPanel'
+import { FORMAT_MODES, valueText, type FormatMode } from './ui/formatValue'
 import { maxIdNumber, pinsFromInterface, reconcilePins } from './ui/exercisePins'
 import { filesFromDrop, hasFiles, readExerciseFiles } from './ui/fileLoading'
 import { edgeWidth, flowToCircuit, inputValues } from './ui/flowToCircuit'
 import { fromExercise, fromTestRun } from './ui/runView'
-import { chipSlot, loadCircuit, MANUAL_SLOT, saveCircuit, type SavedCircuit } from './ui/storage'
+import { chipSlot, getPref, loadCircuit, MANUAL_SLOT, saveCircuit, setPref, type SavedCircuit } from './ui/storage'
 import type { AppNode, DragItem, RunView } from './ui/types'
 import './index.css'
 
@@ -53,9 +55,26 @@ export default function App() {
   // Every slot's circuit lives here while the page is open (and in localStorage across visits).
   const memory = useRef(new Map<string, SavedCircuit>())
 
-  // Manual mode: a .cmp uploaded by hand.
-  const [cmp, setCmp] = useState<CmpFile | null>(null)
-  const [cmpName, setCmpName] = useState<string | null>(null)
+  // Free board (no chip selected): files uploaded by hand. `parsed` is the .cmp as a plain binary table;
+  // it is null for a clocked .cmp (time column), which only works together with an uploaded .tst.
+  const [manualCmp, setManualCmp] = useState<{ name: string; text: string; parsed: CmpFile | null; parseError: string | null } | null>(null)
+  const [manualTst, setManualTst] = useState<{ name: string; text: string } | null>(null)
+
+  // Number format of pin values and wire labels (toolbar switch), remembered between visits.
+  const [format, setFormat] = useState<FormatMode>(() => {
+    const saved = getPref('format')
+    return FORMAT_MODES.some((m) => m.id === saved) ? (saved as FormatMode) : 'all'
+  })
+  const changeFormat = (m: FormatMode) => {
+    setFormat(m)
+    setPref('format', m)
+  }
+  // "How to use" panel: opens by itself on the first visit only.
+  const [helpOpen, setHelpOpen] = useState(() => getPref('helpSeen') !== '1')
+  const closeHelp = useCallback(() => {
+    setHelpOpen(false)
+    setPref('helpSeen', '1')
+  }, [])
 
   const [showExpected, setShowExpected] = useState(false)
   const [run, setRun] = useState<RunView | null>(null)
@@ -105,7 +124,7 @@ export default function App() {
       ),
     [setNodes],
   )
-  const boardContext = useMemo(() => ({ setInputValue }), [setInputValue])
+  const boardContext = useMemo(() => ({ setInputValue, format }), [setInputValue, format])
 
   // ---- Deleting the selection (nodes and wires) ----
   // We handle Delete/Backspace ourselves instead of relying on React Flow's key handler,
@@ -268,10 +287,27 @@ export default function App() {
     structuralChange()
   }
 
-  const onUpload = async (file: File) => {
+  const onUploadCmp = async (file: File) => {
     try {
-      setCmp(parseCmp(await file.text()))
-      setCmpName(file.name)
+      const text = await file.text()
+      let parsed: CmpFile | null = null
+      let parseError: string | null = null
+      try {
+        parsed = parseCmp(text)
+      } catch (e) {
+        parseError = (e as Error).message // e.g. a clocked .cmp with a "0+" time column
+      }
+      setManualCmp({ name: file.name, text, parsed, parseError })
+      setErrors([])
+      clearRun()
+    } catch (e) {
+      setErrors([`Could not read ${file.name}: ${(e as Error).message}`])
+    }
+  }
+
+  const onUploadTst = async (file: File) => {
+    try {
+      setManualTst({ name: file.name, text: await file.text() })
       setErrors([])
       clearRun()
     } catch (e) {
@@ -305,13 +341,26 @@ export default function App() {
         setErrors([])
         return setRun(fromTestRun(runTests(circuit, table), widths))
       }
-      // ---- manual flow: a .cmp uploaded by hand ----
-      if (!cmp) return setErrors(['Upload a .cmp file first (or load a folder and pick a chip).'])
+      // ---- free board: a .cmp (and optionally a .tst) uploaded by hand ----
+      if (!manualCmp) return setErrors(['Upload a .cmp file first (or load a folder and pick a chip).'])
       if (pinErrors.length) return setErrors(pinErrors)
+      if (manualTst) {
+        const result = runExercise(circuit, manualTst.text, manualCmp.text)
+        setErrors([])
+        setWarnings(result.warnings.map((w) => `${manualTst.name}: ${w}`))
+        return setRun(fromExercise(result))
+      }
+      const table = manualCmp.parsed
+      if (!table) {
+        return setErrors([
+          `Problem in the .cmp file: ${manualCmp.parseError}`,
+          'A .cmp with a time column (clocked chips) needs the matching .tst: use "Upload .tst".',
+        ])
+      }
       if (hasSequential(circuit)) return setErrors(needsTst)
-      const widths = Object.fromEntries(cmp.columns.map((c, i) => [c, cmp.widths[i]]))
+      const widths = Object.fromEntries(table.columns.map((c, i) => [c, table.widths[i]]))
       setErrors([])
-      setRun(fromTestRun(runTests(circuit, cmp), widths))
+      setRun(fromTestRun(runTests(circuit, table), widths))
     } catch (e) {
       // CircuitError carries a list of user-fixable problems; anything else is a real bug.
       showError(e)
@@ -372,30 +421,40 @@ export default function App() {
           ...e,
           animated: false,
           style: { stroke: v ? GREEN : GRAY, strokeWidth: thickness, ...glow },
-          // Buses (width > 1) show their numeric value on the wire.
-          label: width > 1 ? String(v) : undefined,
+          // Buses (width > 1) show their value on the wire, in the format chosen in the toolbar.
+          label: width > 1 ? valueText(v, width, format) : undefined,
           labelStyle: { fontWeight: 700, fill: v ? GREEN : '#555' },
         }
       }),
-    [edges, nodes, view],
+    [edges, nodes, view, format],
   )
 
   // The expected table: the active chip's .cmp (any format), or the manually uploaded one.
   const expectedTable = useMemo<ExpectedTable | null>(() => {
     try {
       if (active?.cmp) return { title: active.cmp.name, ...cmpTextTable(active.cmp.text) }
-      if (!active && cmp && cmpName) {
-        return {
-          title: cmpName,
-          columns: cmp.columns,
-          rows: cmp.rows.map((r) => r.values.map((v, j) => v.toString(2).padStart(cmp.widths[j], '0'))),
-        }
-      }
+      if (!active && manualCmp) return { title: manualCmp.name, ...cmpTextTable(manualCmp.text) }
     } catch {
       /* unreadable .cmp: Run reports the details */
     }
     return null
-  }, [active, cmp, cmpName])
+  }, [active, manualCmp])
+
+  // Why a toolbar button is unavailable (null = available). Shown as its tooltip.
+  const uploadWhyNot = active
+    ? 'a chip is selected, so its own .cmp and .tst are used. Choose "no chip selected" at the top to upload your own.'
+    : null
+  const runWhyNot = active
+    ? active.cmp
+      ? null
+      : `${active.name}.cmp is missing from the loaded files.`
+    : manualCmp
+      ? null
+      : 'load a folder and pick a chip, or upload a .cmp file first.'
+  const clockWhyNot = nodes.length > 0 ? null : 'the board is empty. Add pins or gates first.'
+  const resetWhyNot = live ? null : 'nothing to reset yet. Press Tick, Tock or Step first.'
+  const expectedWhyNot = expectedTable ? null : 'no .cmp loaded yet. Pick a chip or upload a .cmp file.'
+  const deleteWhyNot = hasSelection ? null : 'nothing is selected. Click a gate, pin or wire first.'
 
   const onRootDrop = async (e: React.DragEvent) => {
     if (!hasFiles(e.dataTransfer)) return // chips dragged from the palette are handled by the board
@@ -411,22 +470,33 @@ export default function App() {
     >
       <TopBar
         chips={exercises}
-        activeName={activeName}
+        active={active}
         onSelectChip={(name) => switchTo(name)}
+        manualCmpName={manualCmp?.name ?? null}
+        manualTstName={manualTst?.name ?? null}
+        onHelp={() => setHelpOpen(true)}
+      />
+      <Toolbar
         onLoadFiles={onLoadFiles}
-        cmpName={cmpName}
-        onUpload={onUpload}
-        canShowExpected={expectedTable !== null}
-        showExpected={showExpected}
-        onToggleExpected={() => setShowExpected((s) => !s)}
+        uploadWhyNot={uploadWhyNot}
+        onUploadCmp={onUploadCmp}
+        onUploadTst={onUploadTst}
+        runWhyNot={runWhyNot}
+        onRun={onRun}
+        clockWhyNot={clockWhyNot}
+        resetWhyNot={resetWhyNot}
         clockTime={live?.time ?? '0'}
         onTick={() => onClock('tick')}
         onTock={() => onClock('tock')}
         onStep={() => onClock('step')}
         onReset={() => onClock('reset')}
-        hasSelection={hasSelection}
+        expectedWhyNot={expectedWhyNot}
+        showExpected={showExpected}
+        onToggleExpected={() => setShowExpected((s) => !s)}
+        format={format}
+        onFormat={changeFormat}
+        deleteWhyNot={deleteWhyNot}
         onDeleteSelected={deleteSelected}
-        onRun={onRun}
       />
       {errors.length > 0 && (
         <div className="error-banner" role="alert">
@@ -449,9 +519,8 @@ export default function App() {
         </div>
       )}
       <div className="main">
-        <Sidebar showPins={!active || !autoPins} />
+        <Sidebar chips={exercises} activeName={activeName} onSelectChip={(name) => switchTo(name)} showPins={!active || !autoPins} />
         <div className="center">
-          <ChipBanner chip={active} manualCmpName={cmpName} />
           <BoardContext.Provider value={boardContext}>
             <Board
               nodes={shownNodes}
@@ -466,6 +535,7 @@ export default function App() {
         </div>
         {showExpected && expectedTable && <ExpectedPanel table={expectedTable} />}
       </div>
+      {helpOpen && <HelpPanel onClose={closeHelp} />}
     </div>
   )
 }

@@ -1,96 +1,75 @@
-import { useRef, type ChangeEvent } from 'react'
-import type { ExerciseChip } from '../engine/exercise'
+import type { ExerciseChip, ExerciseFile } from '../engine/exercise'
 
 interface Props {
-  // chip selector / folder loading
   chips: ExerciseChip[]
-  activeName: string | null
+  active: ExerciseChip | null
   onSelectChip: (name: string | null) => void
-  onLoadFiles: (files: File[]) => void
-  // manual .cmp upload (only used when no chip is selected)
-  cmpName: string | null
-  onUpload: (file: File) => void
-  canShowExpected: boolean
-  showExpected: boolean
-  onToggleExpected: () => void
-  // clock
-  clockTime: string // "0", "0+", "1", ... (see Simulator.time)
-  onTick: () => void
-  onTock: () => void
-  onStep: () => void
-  onReset: () => void
-  // editing / running
-  hasSelection: boolean
-  onDeleteSelected: () => void
-  onRun: () => void
+  // Free-board mode (no chip selected): the files uploaded by hand.
+  manualCmpName: string | null
+  manualTstName: string | null
+  onHelp: () => void
 }
 
-export default function TopBar(p: Props) {
-  const cmpRef = useRef<HTMLInputElement>(null)
-  const folderRef = useRef<HTMLInputElement>(null)
-  const filesRef = useRef<HTMLInputElement>(null)
+const chipLabel = (c: ExerciseChip) => (c.missing.length ? `⚠ ${c.name} (missing ${c.missing.join(', ')})` : c.name)
 
-  const picked = (cb: (files: File[]) => void) => (e: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? [])
-    if (files.length) cb(files)
-    e.target.value = '' // allow picking the same folder/file again after editing it
-  }
-
-  const label = (c: ExerciseChip) => (c.missing.length ? `⚠ ${c.name} (missing ${c.missing.join(', ')})` : c.name)
+/**
+ * Top bar: app name on the left, the SELECTED CHIP in the middle (large, with its file names
+ * under it) and the Help button on the right.
+ */
+export default function TopBar({ chips, active, onSelectChip, manualCmpName, manualTstName, onHelp }: Props) {
+  const file = (label: string, f: ExerciseFile | undefined, ext: string) =>
+    f ? (
+      <span key={label}>
+        {label} <b>{f.name}</b>
+      </span>
+    ) : (
+      <span key={label} className="missing" title={`${active?.name}.${ext} was not found in the loaded files`}>
+        {label} ⚠ {active?.name}.{ext} missing
+      </span>
+    )
 
   return (
     <header className="topbar">
-      <strong className="brand">Hack Chip Lab</strong>
+      <div className="brand">Hack Chip Lab</div>
 
-      {/* webkitdirectory makes the browser pick a whole folder; it is not in React's types, hence the spread. */}
-      <input ref={folderRef} type="file" multiple hidden {...({ webkitdirectory: '' } as object)} onChange={picked(p.onLoadFiles)} />
-      <input ref={filesRef} type="file" multiple hidden accept=".hdl,.tst,.cmp" onChange={picked(p.onLoadFiles)} />
-      <button onClick={() => folderRef.current?.click()} title="Pick a folder with Name.hdl / Name.tst / Name.cmp files (you can also drop it on the page)">
-        Load folder
-      </button>
-      <button onClick={() => filesRef.current?.click()} title="Pick several .hdl / .tst / .cmp files">
-        Files…
-      </button>
-      <select
-        className="chip-select"
-        value={p.activeName ?? ''}
-        onChange={(e) => p.onSelectChip(e.target.value || null)}
-        aria-label="Chip"
-        disabled={p.chips.length === 0}
-      >
-        <option value="">{p.chips.length ? '— no chip (manual) —' : 'no chips loaded'}</option>
-        {p.chips.map((c) => (
-          <option key={c.name} value={c.name}>
-            {label(c)}
-          </option>
-        ))}
-      </select>
+      <div className="chip-title">
+        {chips.length > 0 ? (
+          <select
+            className="chip-title-select"
+            value={active?.name ?? ''}
+            onChange={(e) => onSelectChip(e.target.value || null)}
+            aria-label="Selected chip"
+            title="Choose which chip you are building"
+          >
+            <option value="">— no chip selected —</option>
+            {chips.map((c) => (
+              <option key={c.name} value={c.name}>
+                {chipLabel(c)}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="chip-title-text" title="Load a folder to get a list of chips">
+            No chip selected
+          </div>
+        )}
+        <div className="chip-files">
+          {active ? (
+            <>
+              {file('CMP', active.cmp, 'cmp')} · {file('TST', active.tst, 'tst')} · {file('HDL', active.hdl, 'hdl')}
+            </>
+          ) : chips.length > 0 ? (
+            <span>
+              Free board · CMP <b>{manualCmpName ?? 'none'}</b> · TST <b>{manualTstName ?? 'none'}</b>
+            </span>
+          ) : (
+            <span>Click “Load folder” to start, or press Help</span>
+          )}
+        </div>
+      </div>
 
-      {/* The chip flow loads its own .cmp, so manual upload is only for "no chip selected". */}
-      <input ref={cmpRef} type="file" accept=".cmp,text/plain" hidden onChange={picked(([f]) => p.onUpload(f))} />
-      {!p.activeName && (
-        <>
-          <button onClick={() => cmpRef.current?.click()}>Upload .cmp</button>
-          <span className="file-name">{p.cmpName ?? 'no file loaded'}</span>
-        </>
-      )}
-      <span className="spacer" />
-
-      <button disabled={!p.canShowExpected} aria-pressed={p.showExpected} onClick={p.onToggleExpected}>
-        {p.showExpected ? 'Hide expected' : 'Show expected'}
-      </button>
-      <span className="clock" title="Clock cycles: 1+ means 'after tick', 2 means 'after tock'">
-        Clock <b>{p.clockTime}</b>
-      </span>
-      <button onClick={p.onTick} title="Rising edge: chips sample their inputs">Tick</button>
-      <button onClick={p.onTock} title="Falling edge: sampled values become the outputs">Tock</button>
-      <button onClick={p.onStep} title="Tick then Tock">Step</button>
-      <button onClick={p.onReset} title="Clear all stored values; clock back to 0">Reset</button>
-      <button disabled={!p.hasSelection} onClick={p.onDeleteSelected} title="Delete the selected chips, pins and wires (Delete / Backspace)">
-        Delete selected
-      </button>
-      <button className="primary" onClick={p.onRun}>
-        ▶ Run
+      <button className="help-btn" onClick={onHelp} title="How to use this app (5 steps)">
+        ? Help
       </button>
     </header>
   )

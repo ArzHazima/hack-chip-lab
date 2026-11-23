@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { chipSlot, loadCircuit, MANUAL_SLOT, saveCircuit, type SavedCircuit } from './storage'
+import { chipSlot, getPref, loadCircuit, MANUAL_SLOT, saveCircuit, setPref, type SavedCircuit } from './storage'
 
 const circuit: SavedCircuit = {
   nodes: [{ id: 'And1', type: 'chip', position: { x: 1, y: 2 }, data: { type: 'And' } }],
@@ -83,5 +83,28 @@ describe('storage slot of a chip identifies its interface', () => {
 
   it('never collides with the manual board slot', () => {
     expect(chipSlot({ name: '__manual__' })).not.toBe(MANUAL_SLOT)
+  })
+})
+
+describe('small preferences (format, help shown)', () => {
+  it('work without localStorage (nothing remembered, nothing thrown)', () => {
+    expect(() => setPref('format', 'hex')).not.toThrow()
+    expect(getPref('format')).toBeNull()
+  })
+
+  it('are remembered per name', () => {
+    const m = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) })
+    setPref('format', 'hex')
+    setPref('helpSeen', '1')
+    expect(getPref('format')).toBe('hex')
+    expect(getPref('helpSeen')).toBe('1')
+    expect(getPref('other')).toBeNull()
+  })
+
+  it('a blocked storage (every call throws) never breaks the app', () => {
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('blocked') }, setItem: () => { throw new Error('blocked') } })
+    expect(() => setPref('x', '1')).not.toThrow()
+    expect(getPref('x')).toBeNull()
   })
 })

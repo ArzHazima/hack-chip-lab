@@ -63,3 +63,21 @@ export function loadCircuit(slot: string): SavedCircuit | null {
     return null
   }
 }
+
+// Tiny preferences (chosen number format, "help already shown"): same rule as the circuits,
+// localStorage may be missing or blocked, so every access is wrapped in try/catch.
+export function getPref(name: string): string | null {
+  try {
+    return localStorage.getItem(`hacklab:pref:${name}`)
+  } catch {
+    return null
+  }
+}
+
+export function setPref(name: string, value: string): void {
+  try {
+    localStorage.setItem(`hacklab:pref:${name}`, value)
+  } catch {
+    /* ignore: the preference just will not be remembered */
+  }
+}
