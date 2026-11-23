@@ -79,15 +79,18 @@ button.primary:disabled { background: var(--line-soft); border-color: var(--line
 .help-btn:hover:not(:disabled) { background: #1f2937; border-color: #fff; }
 
 /* ---------- toolbar: three labelled groups ---------- */
-.toolbar { display: flex; flex-wrap: wrap; gap: var(--gap-2) var(--gap-4); align-items: stretch; padding: var(--gap-2) var(--gap-4); background: var(--panel); border-bottom: 1px solid var(--line); }
-.tool-group { display: flex; flex-direction: column; gap: var(--gap-1); padding-right: var(--gap-4); border-right: 1px solid var(--line-soft); }
+/* Tight spacing so all three groups fit on ONE row at 1280 px; if the window is narrower they wrap
+   cleanly (each group keeps its own title and top alignment). */
+.toolbar { display: flex; flex-wrap: wrap; gap: var(--gap-2) var(--gap-3); align-items: flex-start; padding: 6px var(--gap-3); background: var(--panel); border-bottom: 1px solid var(--line); }
+.tool-group { display: flex; flex-direction: column; gap: 2px; padding-right: var(--gap-3); border-right: 1px solid var(--line-soft); }
 .tool-group:last-child { border-right: 0; padding-right: 0; }
 .tool-label { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-.tool-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-1) var(--gap-2); }
+.tool-buttons { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--gap-1) 6px; }
+.toolbar button { padding: 4px 8px; font-size: 13px; white-space: nowrap; }
 .clock { font-size: var(--fs-sm); color: var(--muted); margin-left: var(--gap-1); }
 .clock b { display: inline-block; min-width: 3ch; color: var(--ink); font-family: var(--mono); font-size: var(--fs-md); }
 .segmented { display: inline-flex; }
-.seg { border-radius: 0; margin-left: -1px; padding: 5px 9px; }
+.toolbar .seg { border-radius: 0; margin-left: -1px; padding: 4px 8px; }
 .seg:first-child { border-radius: var(--radius) 0 0 var(--radius); margin-left: 0; }
 .seg:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
 .seg.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; position: relative; }

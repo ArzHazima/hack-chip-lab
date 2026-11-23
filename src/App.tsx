@@ -529,6 +529,7 @@ export default function App() {
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
               onDropItem={onDropItem}
+              fitKey={activeSlot}
             />
           </BoardContext.Provider>
           {run && <ResultsTable run={run} selected={selectedRow} onSelect={setSelectedRow} />}

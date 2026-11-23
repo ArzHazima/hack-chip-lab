@@ -19,6 +19,11 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
   bits), Decimal, Hex or All (default). It applies to pin nodes AND to the value labels of wires wider than 1 bit.
   Input pins have a row of bit buttons (MSB on the left, bit index on top) that stay in sync with the decimal box.
   Output pins show their value after Run / Tick / Step. Pin widths are 1..16, so a 16-bit pin node is wide.
+- **Keeping the board in view** (`Board.tsx`): the toolbar is tight enough to sit on ONE row at 1280 px (it wraps
+  cleanly below that). A `ResizeObserver` on the board refits the view (`fitView`, max zoom 1.25) whenever the board
+  changes size (window resize, results panel opening/closing, Show expected) and when a different chip's board is
+  shown (`fitKey`), UNLESS the user panned or zoomed by hand (`onMoveStart` with a real event sets `userMoved`). The
+  corner "fit view" button clears that flag, so auto-fit resumes.
 - User drags chips from the palette onto the canvas, adds named input/output pins, and connects them with wires.
 - Click a chip, pin or wire to select it (amber highlight). Delete / Backspace or the **Delete selected** button removes
   the selection plus any wires attached to deleted nodes. Keys are ignored while typing in a text field. Deletion is

@@ -4,9 +4,9 @@ A web app for **building Nand2Tetris chips visually**: drag built-in chips onto 
 together, and check the result against the exercise's own `.tst` / `.cmp` files, with a ✅ / ❌ for every row.
 Everything runs in your browser; nothing is uploaded anywhere.
 
-![Hack Chip Lab: a hand-wired Mirror16 chip (Split + Join) with all 7 test rows passing](docs/screenshot.png)
+![Hack Chip Lab: the Mirror16 chip selected, wired with Split and Join, binary values on the pins and all 7 test rows passing](docs/screenshot.png)
 
-_A bit-reversal chip built from Split and Join, with its `.tst` / `.cmp` results (7 / 7 rows passed)._
+_Mirror16 (a bit reversal built from Split and Join): the chip and its files in the top bar, binary / decimal / hex values on the pins for the selected test row, and 7 / 7 test rows passed._
 
 ## Quick start
 
@@ -31,6 +31,8 @@ Then open the address Vite prints (usually http://localhost:5173).
 - **Buses:** Split, Join and true / false constants (1–16 bits, single bits or ranges such as `0..7`).
 - **Runs the chip's `.tst` against its `.cmp`** and shows a pass/fail table. Click a row to see its values on
   the board (wires turn green for 1, gray for 0). **Show expected** displays the `.cmp` table.
+- **Values you can read:** pins and wires show their value in binary (grouped by 4 bits), decimal and hex; the
+  toolbar's format switch chooses which. Input pins have clickable bit buttons next to the decimal box.
 - **Clock:** Tick / Tock / Step / Reset with a cycle counter and the stored value of every DFF and PC.
 - **Editing:** select a chip, pin or wire and press Delete / Backspace (or use **Delete selected**).
 - **Autosave:** every chip keeps its own circuit in your browser's local storage.
