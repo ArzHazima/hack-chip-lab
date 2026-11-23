@@ -10,7 +10,9 @@ First tagged release. The repository is private.
 - **Automatic pins:** the chip's input and output pins (names and widths, up to 16 bits) are created from the
   `IN` / `OUT` lines of its `.hdl`. Only the interface is read; `PARTS` is ignored.
 - **Built-in chips:** Boolean logic (Nand … DMux8Way), arithmetic (HalfAdder, FullAdder, Add16, Inc16, ALU)
-  and memory (DFF, DFF16, PC, RAM64, RAM512, RAM4K, RAM16K), drawn as gate symbols and grouped by project.
+  and memory (DFF, DFF16, Bit, Register, ARegister, DRegister, PC, RAM8, RAM64, RAM512, RAM4K, RAM16K),
+  drawn as gate symbols or boxes and grouped by project. The built-in with the same name as the chip you are
+  building is hidden from the sidebar, so a chip can never be built out of itself.
 - **Buses:** Split and Join nodes (single bits and ranges, bit 0 least significant) and true / false constants,
   with validation of range widths, overlaps and undriven bits.
 - **Combinational and basic sequential chips:** feedback loops are allowed only through a DFF or PC;

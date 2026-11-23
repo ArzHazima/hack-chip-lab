@@ -1,6 +1,7 @@
 import { useState, type DragEvent, type ReactNode } from 'react'
 import { CHIP_GROUPS } from '../engine/chips'
 import type { ExerciseChip } from '../engine/exercise'
+import { visibleChipGroups } from './palette'
 import { DRAG_MIME, type DragItem } from './types'
 
 // HTML5 drag & drop: we stash a JSON description of the item in the drag event;
@@ -145,7 +146,8 @@ export default function Sidebar({ chips, activeName, onSelectChip, showPins }: P
       </Section>
 
       {/* One collapsible section per Nand2Tetris project; chips in a compact two-column grid. */}
-      {CHIP_GROUPS.map((group) => (
+      {/* The built-in with the same name as the chip under test is hidden (you cannot build a chip out of itself). */}
+      {visibleChipGroups(CHIP_GROUPS, activeName).map((group) => (
         <Section key={group.title} title={group.title} count={group.chips.length}>
           <div className="palette-grid">
             {group.chips.map((name) => (

@@ -34,10 +34,16 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
     Not16, And16, Or16, Mux16, Or8Way, Mux4Way16, Mux8Way16, DMux4Way, DMux8Way.
   - Project 2 – Boolean Arithmetic: HalfAdder, FullAdder, Add16, Inc16, ALU
     (ALU = official Hack ALU: inputs x, y, zx, nx, zy, ny, f, no → outputs out, zr, ng).
-  - Project 3 – Memory: DFF, DFF16, PC, RAM64, RAM512, RAM4K, RAM16K. Bit, Register and RAM8 are NOT built in:
-    the user builds them from DFF + Mux. DFF16 (= 16 DFFs side by side) was added before buses existed and is KEPT
-    because the sequential tests build Register/RAM8 from it; with Split/Join a Register can now also be made from
-    16 DFFs.
+  - Project 3 – Memory (all clocked, same tick/tock model; sidebar section "Project 3 – Memory"): **DFF**, DFF16,
+    **Bit** (in, load → out), **Register**, **ARegister**, **DRegister** (in[16], load → out[16]; the three behave
+    identically), **PC**, **RAM8** (address[3]), **RAM64** (address[6]), **RAM512** (address[9]), **RAM4K**
+    (address[12]), **RAM16K** (address[14]); RAMs take in[16], load, address and give out[16]. Bit / Register /
+    ARegister / DRegister / DFF / DFF16 / PC are *registered* (loops through them are legal, they show a "stored"
+    badge); the RAMs are not (see the engine rules). DFF16 (= 16 DFFs side by side) predates buses and is KEPT because
+    the sequential tests build Register/RAM8 from it.
+  - **The chip under test is never offered as a block in its own palette:** if an exercise folder contains a chip named
+    like a built-in (Bit, Register, RAM8 ...) and you select it, the built-in with that name is hidden from the
+    sidebar (`visibleChipGroups` in `ui/palette.ts`; names are case-sensitive) so you cannot build it out of itself.
   - **Wiring** (sidebar section, not in `CHIPS`): **Split** (N-bit in → single-bit outputs `[0]`..`[N-1]` and/or range
     outputs like `[0..7]`), **Join** (single-bit/range inputs → one N-bit out), **true / false** constants (all ones /
     zero, chosen width). Width 1..16. Split/Join have a "ranges" text box in the sidebar before dragging
@@ -119,8 +125,11 @@ tests/         # end-to-end tests; fixtures/buses/ = 3 INVENTED chips (hdl/tst/c
 ## Engine rules
 - Signals are numbers; a pin has a width (1 or 16, sometimes 2/3 for `sel`). Mask values to width.
 - Evaluate in topological order; a cycle → clear error, not a hang. The one exception: a feedback loop is legal if it
-  passes through a *registered* chip (DFF, DFF16, PC: output comes only from stored state, `seq.registered`).
-  RAM is not registered (reading is combinational on `address`), so a loop through only RAM is still an error.
+  passes through a *registered* chip (DFF, DFF16, Bit, Register, ARegister, DRegister, PC: output comes only from
+  stored state, `seq.registered`). RAM (RAM8 … RAM16K) is not registered (reading is combinational on `address`), so a
+  loop through only RAM is still an error. That is a KNOWN false cycle (e.g. RAM8 out → Inc16 → RAM8 in is rejected
+  although real hardware allows it, because `in`/`load` are only sampled at the tick); planned fix: per-input
+  combinational dependencies (gate R2).
 - Sequential chips are `ChipDef.seq` (`SeqBehavior`: init/read/tick/tock/stored). State is per chip INSTANCE and lives
   in the `Simulator`, never in the chip definition. tick latches inputs, tock commits them (Nand2Tetris model);
   RAM writes happen at tock, reads are combinational.

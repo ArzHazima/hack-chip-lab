@@ -235,6 +235,26 @@ function dffChip(name: string, width: number): ChipDef {
   })
 }
 
+/**
+ * Bit / Register / ARegister / DRegister (they all behave the same):
+ *   out(t+1) = load(t) ? in(t) : out(t)
+ * Registered: the output comes from the stored value only, so a feedback loop through one is legal.
+ * The stored value is masked to the width (a Register never holds more than 16 bits).
+ */
+function loadRegisterChip(name: string, width: number): ChipDef {
+  return seqChip(name, [p('in', width), p('load')], [p('out', width)], {
+    registered: true,
+    init: (): Reg => ({ cur: 0, next: 0 }),
+    read: (_inp, s) => ({ out: (s as Reg).cur }),
+    tick: (inp, s) => {
+      const r = s as Reg
+      r.next = inp.load ? mask(inp.in, width) : r.cur
+    },
+    tock: (s) => void ((s as Reg).cur = (s as Reg).next),
+    stored: (s) => (s as Reg).cur,
+  })
+}
+
 type Mem = { mem: Uint16Array; pending: [number, number] | null }
 
 /** RAM with 2^addrBits 16-bit words. Reading is combinational; writing happens at tock. */
@@ -274,6 +294,11 @@ const seqDefs: ChipDef[] = [
   dffChip('DFF', 1),
   // Stand-in for 16 DFFs: real Register = 16 Bits, which needs bus slicing (a later stage).
   dffChip('DFF16', W),
+  loadRegisterChip('Bit', 1),
+  loadRegisterChip('Register', W),
+  loadRegisterChip('ARegister', W), // the Hack CPU's A register: same pins and behaviour as Register
+  loadRegisterChip('DRegister', W), // the Hack CPU's D register
+  ramChip('RAM8', 3),
   ramChip('RAM64', 6),
   ramChip('RAM512', 9),
   ramChip('RAM4K', 12),
@@ -300,8 +325,10 @@ export const CHIP_GROUPS: { title: string; chips: string[] }[] = [
     chips: ['HalfAdder', 'FullAdder', 'Add16', 'Inc16', 'ALU'],
   },
   {
-    // Bit, Register and RAM8 are meant to be BUILT by the user from DFF + Mux.
+    // Built-ins for speed and for use as blocks. When an exercise folder contains a chip with the
+    // SAME name (say Bit or RAM8) and it is the chip under test, the sidebar hides the built-in
+    // (see ui/palette.ts), so the chip cannot be built out of itself.
     title: 'Project 3 – Memory',
-    chips: ['DFF', 'DFF16', 'PC', 'RAM64', 'RAM512', 'RAM4K', 'RAM16K'],
+    chips: ['DFF', 'DFF16', 'Bit', 'Register', 'ARegister', 'DRegister', 'PC', 'RAM8', 'RAM64', 'RAM512', 'RAM4K', 'RAM16K'],
   },
 ]
