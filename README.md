@@ -29,7 +29,9 @@ Then open the address Vite prints (usually http://localhost:5173).
 - **Built-in chips** grouped by project: Boolean logic (Nand … DMux8Way), arithmetic (HalfAdder … ALU) and
   memory (DFF, Bit, Register, ARegister, DRegister, PC, RAM8 … RAM16K), drawn as real gate symbols. The built-in
   with the same name as the chip you are building is hidden, so you cannot build a chip out of itself.
-- **Buses:** Split, Join and true / false constants (1–16 bits, single bits or ranges such as `0..7`).
+- **Buses:** Split, Join and true / false constants (1–16 bits, single bits or ranges such as `0..7`). Most of the
+  time you do not even need them: click a multi-bit pin, drag across the bits you want and wire from the new
+  `[4..7]` handle.
 - **Runs the chip's `.tst` against its `.cmp`** and shows a pass/fail table. Click a row to see its values on
   the board (wires turn green for 1, gray for 0). **Show expected** displays the `.cmp` table.
 - **Values you can read:** pins and wires show their value in binary (grouped by 4 bits), decimal and hex; the

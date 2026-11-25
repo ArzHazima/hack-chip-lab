@@ -14,6 +14,10 @@ const STEPS: { title: string; text: string }[] = [
     text: 'Drag gates from the left onto the board. Then drag from a small circle on the right side of one item to a circle on the left side of another to make a wire. Click a wire or a gate and press Delete to remove it.',
   },
   {
+    title: 'Use only some bits',
+    text: 'To wire part of a wide pin, click its name (for example in[16]) to open its bit strip, drag across the bits you want, and wire from the new handle, such as [4..7]. “Split to bits” makes one handle per bit.',
+  },
+  {
     title: 'Set the inputs',
     text: 'On an input pin, click the bit buttons (1 or 0) or type a decimal number. Use Tick, Tock or Step for chips with memory.',
   },

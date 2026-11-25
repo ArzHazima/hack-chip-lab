@@ -1,12 +1,34 @@
 // Custom React Flow nodes. A <Handle> is a connection point; its `id` is how the
 // engine knows which pin a wire is attached to (chip pin name, or 'in'/'out' for board pins).
 
-import { useContext, useMemo, type CSSProperties, type ReactNode } from 'react'
-import { Handle, Position, type NodeProps, type NodeTypes } from '@xyflow/react'
+import { useContext, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { Handle, Position, useUpdateNodeInternals, type NodeProps, type NodeTypes } from '@xyflow/react'
 import { BoardContext } from './BoardContext'
 import { chipLayout, LEAD, type ChipLayout } from './chipLayout'
 import { bitsMsbFirst, formatValue, toggleBit, type FormatMode } from './formatValue'
-import type { ChipNodeT, InPinNodeT, OutPinNodeT } from './types'
+import RangeColumn, { type PinSection } from './RangeColumn'
+import { rangeHandleId } from './ranges'
+import type { ChipNodeT, InPinNodeT, OutPinNodeT, PinRange } from './types'
+
+/**
+ * Which bit strips are open on a node, plus the "tell React Flow the handles changed" call.
+ * Range handles appear and disappear while the node exists, so React Flow must re-measure them.
+ */
+function useRangeUi(nodeId: string, ranges: PinRange[] | undefined) {
+  const [open, setOpen] = useState<Set<string>>(() => new Set())
+  const toggle = (pin: string) =>
+    setOpen((s) => {
+      const next = new Set(s)
+      if (!next.delete(pin)) next.add(pin)
+      return next
+    })
+  const updateNodeInternals = useUpdateNodeInternals()
+  const key = `${(ranges ?? []).map(rangeHandleId).join('|')}#${[...open].join('|')}`
+  useEffect(() => {
+    updateNodeInternals(nodeId)
+  }, [nodeId, key, updateNodeInternals])
+  return { open, toggle }
+}
 
 const label = (name: string, width: number) => (width > 1 ? `${name}[${width}]` : name)
 
@@ -77,10 +99,19 @@ function ChipSymbol({ layout }: { layout: ChipLayout }) {
   )
 }
 
-function ChipNode({ data }: NodeProps<ChipNodeT>) {
+function ChipNode({ id, data }: NodeProps<ChipNodeT>) {
   const layout = useMemo(() => chipLayout(data.type, data.params), [data.type, data.params])
   const { shape, w, h, pins } = layout
   const isBox = shape === 'box'
+  const { open, toggle } = useRangeUi(id, data.ranges)
+  // Multi-bit pins can own bit-range handles: inputs (they receive wires) on the left, outputs on the right.
+  const section = (p: (typeof pins)[number]): PinSection => ({
+    pin: p.name,
+    label: p.name.startsWith('[') ? p.name : `${p.name}[${p.width}]`,
+    width: p.width,
+  })
+  const inSections = pins.filter((p) => p.io === 'in' && p.width > 1).map(section)
+  const outSections = pins.filter((p) => p.io === 'out' && p.width > 1).map(section)
   // Output labels sit above the lead line on gates/Mux (the symbol's tip is in the way);
   // on DMux and boxes there is room to put them inside, next to the pin.
   const outAbove = !isBox && shape !== 'dmux'
@@ -110,6 +141,23 @@ function ChipNode({ data }: NodeProps<ChipNodeT>) {
           else if (p.io === 'in') style = { left: p.leadX + 3, top: p.y - 6 }
           else if (outAbove) style = { right: 0, top: p.y - 15 }
           else style = { right: LEAD + 3, top: p.y - 6 }
+          // A multi-bit pin's label is a button: click it to open the pin's bit strip.
+          if (p.width > 1) {
+            return (
+              <span
+                key={p.name}
+                className="pin-label multi nodrag"
+                style={style}
+                role="button"
+                tabIndex={0}
+                title={`Click to pick bit ranges of ${p.name}`}
+                onClick={() => toggle(p.name)}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && toggle(p.name)}
+              >
+                {text}
+              </span>
+            )
+          }
           return (
             <span key={p.name} className="pin-label" style={style}>
               {text}
@@ -127,6 +175,8 @@ function ChipNode({ data }: NodeProps<ChipNodeT>) {
           />
         ))}
       </div>
+      <RangeColumn nodeId={id} side="left" pins={inSections} ranges={data.ranges ?? []} open={open} onToggle={toggle} issues={data.issues ?? []} />
+      <RangeColumn nodeId={id} side="right" pins={outSections} ranges={data.ranges ?? []} open={open} onToggle={toggle} issues={data.issues ?? []} />
     </div>
   )
 }
@@ -178,10 +228,17 @@ function InputPinNode({ id, data }: NodeProps<InPinNodeT>) {
   const { setInputValue, format } = useContext(BoardContext)
   const max = 2 ** data.width - 1
   const value = data.inputValue ?? 0
+  const { open, toggle } = useRangeUi(id, data.ranges)
   return (
     <div className="board-pin in">
       <div className="pin-head">
-        <span className="pin-name">{label(data.name, data.width)}</span>
+        {data.width > 1 ? (
+          <button type="button" className="pin-name pin-name-btn nodrag" onClick={() => toggle('out')} title="Click to pick bit ranges of this pin">
+            {label(data.name, data.width)}
+          </button>
+        ) : (
+          <span className="pin-name">{label(data.name, data.width)}</span>
+        )}
         {/* Decimal value fed to this pin. It and the bit buttons below always show the same number.
             `nodrag` keeps typing and clicking from dragging the node. */}
         <label className="pin-dec">
@@ -206,22 +263,51 @@ function InputPinNode({ id, data }: NodeProps<InPinNodeT>) {
         </div>
       )}
       <Handle type="source" position={Position.Right} id="out" />
+      {data.width > 1 && (
+        <RangeColumn
+          nodeId={id}
+          side="right"
+          pins={[{ pin: 'out', label: label(data.name, data.width), width: data.width }]}
+          ranges={data.ranges ?? []}
+          open={open}
+          onToggle={toggle}
+          issues={data.issues ?? []}
+        />
+      )}
     </div>
   )
 }
 
-function OutputPinNode({ data }: NodeProps<OutPinNodeT>) {
+function OutputPinNode({ id, data }: NodeProps<OutPinNodeT>) {
   const { format } = useContext(BoardContext)
+  const { open, toggle } = useRangeUi(id, data.ranges)
   return (
     <div className="board-pin out">
       <Handle type="target" position={Position.Left} id="in" />
       <div className="pin-head">
-        <span className="pin-name">{label(data.name, data.width)}</span>
+        {data.width > 1 ? (
+          <button type="button" className="pin-name pin-name-btn nodrag" onClick={() => toggle('in')} title="Click to pick bit ranges of this pin">
+            {label(data.name, data.width)}
+          </button>
+        ) : (
+          <span className="pin-name">{label(data.name, data.width)}</span>
+        )}
       </div>
       {data.value === undefined ? (
         <div className="pin-empty">value shows after Run, Tick or Step</div>
       ) : (
         <ValueLines value={data.value} width={data.width} format={format} />
+      )}
+      {data.width > 1 && (
+        <RangeColumn
+          nodeId={id}
+          side="left"
+          pins={[{ pin: 'in', label: label(data.name, data.width), width: data.width }]}
+          ranges={data.ranges ?? []}
+          open={open}
+          onToggle={toggle}
+          issues={data.issues ?? []}
+        />
       )}
     </div>
   )

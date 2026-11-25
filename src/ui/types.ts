@@ -4,9 +4,25 @@ import type { Node } from '@xyflow/react'
 // data to be assignable to Record<string, unknown>.)
 /** Settings of a Split / Join / Const node. `ranges` is the text the user typed ("0..7, 8..15"). */
 export type BusParams = { width: number; ranges?: string; ones?: boolean }
-// stored: live DFF/PC value (display only); params: only for Split / Join / Const
-export type ChipData = { type: string; stored?: number; params?: BusParams }
-export type PinData = { name: string; width: number; value?: number; inputValue?: number }
+/**
+ * A bit range of ONE pin that has its own handle on the node (`a[4..7]`). `pin` is the pin's handle id
+ * ('a' for a chip pin, 'out' / 'in' for the input / output pin nodes). Saved with the circuit.
+ */
+export type PinRange = { pin: string; lo: number; hi: number }
+/** A problem with a pin's ranges, shown on that pin (display only, never saved). */
+export type PinIssue = { pin: string; message: string }
+
+// stored: live DFF/PC value (display only); params: only for Split / Join / Const;
+// ranges: the range handles of this node's pins (optional, so circuits saved before ranges still load)
+export type ChipData = { type: string; stored?: number; params?: BusParams; ranges?: PinRange[]; issues?: PinIssue[] }
+export type PinData = {
+  name: string
+  width: number
+  value?: number
+  inputValue?: number
+  ranges?: PinRange[]
+  issues?: PinIssue[]
+}
 
 export type ChipNodeT = Node<ChipData, 'chip'>
 export type InPinNodeT = Node<PinData, 'inpin'>

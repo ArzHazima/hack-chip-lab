@@ -5,7 +5,7 @@ import { assertInterfaceWidths, type HdlInterface, type PinSpec } from '../engin
 import type { AppNode } from './types'
 
 const ROW = 120 // vertical gap between pins on the board
-const OUT_X = 780 // outputs go to the right of the inputs
+const OUT_X = 1000 // outputs go to the right of the inputs
 
 /** Highest number used at the end of a node id (And3 -> 3), so new ids never collide. */
 export function maxIdNumber(nodes: AppNode[]): number {

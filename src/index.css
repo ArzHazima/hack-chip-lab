@@ -195,3 +195,33 @@ tr.selected td { box-shadow: inset 0 0 0 9999px rgba(79, 70, 229, .15); }
 .help-panel ol { margin: 0 0 var(--gap-3); padding-left: 22px; display: grid; gap: 10px; }
 .help-panel li { line-height: 1.45; }
 .help-tip { background: var(--accent-soft); color: var(--accent-ink); border-radius: var(--radius); padding: var(--gap-2) var(--gap-3); font-size: var(--fs-sm); line-height: 1.45; }
+
+/* ---------- bit ranges on pins: bit strip + range handles (RangeColumn.tsx) ---------- */
+.chip-node { position: relative; }
+.pin-label.multi { pointer-events: auto; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+.pin-label.multi:hover { color: var(--accent); }
+.pin-name-btn { background: none; border: 0; padding: 0; color: inherit; font: inherit; font-weight: 700; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.pin-name-btn:hover:not(:disabled) { background: none; color: var(--accent); }
+.range-col { position: absolute; top: 0; display: flex; flex-direction: column; gap: 6px; z-index: 4; width: max-content; max-width: 260px; }
+.range-col.right { left: calc(100% + 16px); }
+.range-col.left { right: calc(100% + 16px); }
+.range-sec { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 8px 6px; font-size: var(--fs-sm); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.range-sec.bad { border-color: var(--bad); }
+.range-head { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 2px 0; font-size: var(--fs-sm); font-weight: 700; cursor: pointer; }
+.range-head:hover:not(:disabled) { background: none; color: var(--accent); }
+.bit-strip { display: flex; margin: 4px 0; touch-action: none; user-select: none; }
+.bs-col { display: flex; flex-direction: column; align-items: center; }
+.bs-col.group-start { margin-left: 6px; }
+.bs-index { font-size: 9px; color: var(--muted); line-height: 11px; }
+.bs-cell { width: 13px; height: 16px; border: 1px solid var(--line); border-radius: 2px; background: var(--panel-2); cursor: crosshair; }
+.bs-cell.covered { background: #c7d2fe; border-color: var(--accent); }
+.bs-cell.picked { background: var(--accent); border-color: var(--accent); }
+.range-presets { display: flex; gap: 4px; margin-bottom: 4px; }
+.range-presets button { padding: 2px 6px; font-size: var(--fs-xs); }
+.range-row { position: relative; display: flex; align-items: center; gap: 8px; margin: 2px -8px 0; padding: 2px 8px; }
+.range-label { font-weight: 700; color: var(--accent-ink); }
+.range-w { color: var(--muted); font-size: var(--fs-xs); flex: 1; }
+.range-x { padding: 0 6px; line-height: 16px; font-size: var(--fs-md); }
+/* width: 0 + min-width: 100% = the message wraps inside the column and never makes it wider, so the
+   handles do not jump sideways while you are wiring (the message text changes with every wire). */
+.range-issue { margin-top: 4px; color: var(--bad); font-size: var(--fs-xs); width: 0; min-width: 100%; white-space: normal; line-height: 1.3; }

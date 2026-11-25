@@ -49,6 +49,20 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
     zero, chosen width). Width 1..16. Split/Join have a "ranges" text box in the sidebar before dragging
     (`0..7, 8..15`, empty = every bit on its own); to change a dropped node, delete it and drop a new one. Bit 0 is the
     least significant. Pin names are the labels (`[3]`, `[0..7]`, `in`, `out`).
+  - **Bit ranges directly on pins ("range handles")**, so most circuits need no Split/Join node: click the name of
+    a multi-bit pin (`in[16]` on a pin node, or a pin label on a chip) to open its **bit strip**, click one bit or
+    drag across several (MSB on the left) to create a handle such as `[4..7]`; quick buttons "Split to bits" /
+    "to nibbles" / "to bytes" create many at once; `×` removes a handle together with its wires. A wire from/to a
+    range handle carries only those bits (its label shows the value with the range's own width). Handles live in
+    a column next to the node (left for pins that receive wires, right for pins that send them). Several ranges on
+    a pin that is READ may overlap (like a Split); ranges that DRIVE one pin must not overlap and must cover every
+    bit (like a Join). Problems are shown on the pin and in the Run error (width mismatch, overlapping bits, bits
+    not driven, whole + range on one pin, range outside the pin). Ranges are saved in the node data (`data.ranges`,
+    optional, so circuits saved earlier load unchanged).
+    Implementation: `ui/ranges.ts` `compileRanges` rewrites the graph into the equivalent graph with ordinary
+    Split/Join nodes inside `flowToCircuit`, so the simulation engine did not change. The rewritten wires keep the
+    ids of the original edges, so the board colours and labels them as before. Golden tests (`ranges.test.ts`,
+    `tests/ranges.test.ts`) compare range circuits with the equivalent Split/Join circuits.
 - Chip symbols (SVG, geometry in `ui/chipLayout.ts`): And = D shape, Nand = D + bubble, Or = curved shield,
   Xor = Or + extra back curve, Not = triangle + bubble. Mux = trapezoid (wide left, `sel` enters from the bottom),
   DMux = mirrored trapezoid; the 4Way/8Way versions are the same but taller. 16-bit variants reuse the 1-bit
@@ -114,6 +128,8 @@ src/
     chipLayout.ts  # pure geometry: shape, size and pin positions per chip type
     flowToCircuit.ts # React Flow graph → engine Circuit
     busParams.ts     # node data (ranges text) → engine ChipParams; pins of any node (defOfData)
+    ranges.ts        # pure: bit ranges on pins (presets, add/remove, validation, compileRanges → Split/Join graph)
+    RangeColumn.tsx  # bit strip + range handles of a node (used by chip nodes and pin nodes)
     exercisePins.ts  # pins from an HDL interface; reconcile a saved circuit with a changed interface
     fileLoading.ts   # folder/file pickers and drag & drop (walks dropped folders)
     storage.ts       # safe localStorage autosave; chipSlot = chip name + interface hash; getPref / setPref

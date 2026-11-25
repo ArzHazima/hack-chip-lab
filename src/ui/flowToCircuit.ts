@@ -4,16 +4,21 @@
 import type { Edge } from '@xyflow/react'
 import { defOfData, paramsOf } from './busParams'
 import type { Circuit, Endpoint } from '../engine/circuit'
-import type { AppNode } from './types'
+import { compileRanges, rangeHandleId, rangeWidth } from './ranges'
+import type { AppNode, PinRange } from './types'
 
 function endpoint(node: AppNode, handle: string): Endpoint {
   // Chip handles are named after the chip pin; pin nodes have a single handle.
   return node.type === 'chip' ? { chip: node.id, pin: handle } : { pin: node.id }
 }
 
-export function flowToCircuit(nodes: AppNode[], edges: Edge[]): { circuit: Circuit; errors: string[] } {
+export function flowToCircuit(rawNodes: AppNode[], rawEdges: Edge[]): { circuit: Circuit; errors: string[] } {
   const circuit: Circuit = { pins: [], chips: [], wires: [] }
-  const errors: string[] = []
+  // Bit ranges on pins are compiled to the Split / Join nodes the engine already knows (see ranges.ts).
+  const compiled = compileRanges(rawNodes, rawEdges)
+  const nodes = compiled.nodes
+  const edges = compiled.edges
+  const errors: string[] = [...compiled.errors]
   const names = new Set<string>()
 
   for (const n of nodes) {
@@ -49,10 +54,13 @@ export function flowToCircuit(nodes: AppNode[], edges: Edge[]): { circuit: Circu
   return { circuit, errors }
 }
 
-/** Bit width carried by an edge (taken from its source pin), for the wire label. */
+/** Bit width carried by an edge (taken from its source pin, or its range), for the wire label. */
 export function edgeWidth(nodes: AppNode[], edge: Edge): number {
   const src = nodes.find((n) => n.id === edge.source)
   if (!src) return 1
+  // A wire from a range handle carries only the bits of that range.
+  const range = ((src.data as { ranges?: PinRange[] }).ranges ?? []).find((r) => rangeHandleId(r) === edge.sourceHandle)
+  if (range) return rangeWidth(range)
   if (src.type === 'chip') {
     return defOfData(src.data)?.outputs.find((p) => p.name === edge.sourceHandle)?.width ?? 1
   }

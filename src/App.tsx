@@ -27,9 +27,10 @@ import { FORMAT_MODES, valueText, type FormatMode } from './ui/formatValue'
 import { maxIdNumber, pinsFromInterface, reconcilePins } from './ui/exercisePins'
 import { filesFromDrop, hasFiles, readExerciseFiles } from './ui/fileLoading'
 import { edgeWidth, flowToCircuit, inputValues } from './ui/flowToCircuit'
+import { addRanges as addRangesTo, compileRanges, rangeHandleId, removeRange as removeRangeFrom, type BitRange } from './ui/ranges'
 import { fromExercise, fromTestRun } from './ui/runView'
 import { chipSlot, getPref, loadCircuit, MANUAL_SLOT, saveCircuit, setPref, type SavedCircuit } from './ui/storage'
-import type { AppNode, DragItem, RunView } from './ui/types'
+import type { AppNode, DragItem, PinIssue, PinRange, RunView } from './ui/types'
 import './index.css'
 
 const GREEN = '#16a34a'
@@ -124,7 +125,36 @@ export default function App() {
       ),
     [setNodes],
   )
-  const boardContext = useMemo(() => ({ setInputValue, format }), [setInputValue, format])
+  // ---- bit ranges on pins (range handles; see ui/ranges.ts) ----
+  const rangesOf = (n: AppNode) => (n.data as { ranges?: PinRange[] }).ranges ?? []
+  const addRanges = useCallback(
+    (nodeId: string, pin: string, wanted: BitRange[], width: number) =>
+      setNodes((ns) =>
+        ns.map((n) => {
+          if (n.id !== nodeId) return n
+          const current = rangesOf(n)
+          const next = addRangesTo(current, pin, wanted, width)
+          return next.length === current.length ? n : ({ ...n, data: { ...n.data, ranges: next } } as AppNode)
+        }),
+      ),
+    [setNodes],
+  )
+  const removeRange = useCallback(
+    (nodeId: string, range: PinRange) => {
+      const handle = rangeHandleId(range)
+      setNodes((ns) =>
+        ns.map((n) => (n.id === nodeId ? ({ ...n, data: { ...n.data, ranges: removeRangeFrom(rangesOf(n), range) } } as AppNode) : n)),
+      )
+      // wires attached to the removed handle would point at a handle that no longer exists
+      setEdges((es) => es.filter((e) => !((e.source === nodeId && e.sourceHandle === handle) || (e.target === nodeId && e.targetHandle === handle))))
+      structuralChange()
+    },
+    [setNodes, setEdges, structuralChange],
+  )
+  const boardContext = useMemo(
+    () => ({ setInputValue, format, addRanges, removeRange }),
+    [setInputValue, format, addRanges, removeRange],
+  )
 
   // ---- Deleting the selection (nodes and wires) ----
   // We handle Delete/Backspace ourselves instead of relying on React Flow's key handler,
@@ -393,18 +423,28 @@ export default function App() {
           : null,
     [snap, live],
   )
+  // Problems with bit ranges (width mismatch, overlapping or undriven bits), shown on the pins they are about.
+  const issuesByNode = useMemo(() => {
+    const byNode = new Map<string, PinIssue[]>()
+    for (const i of compileRanges(nodes, edges).issues) {
+      byNode.set(i.nodeId, [...(byNode.get(i.nodeId) ?? []), { pin: i.pin, message: i.message }])
+    }
+    return byNode
+  }, [nodes, edges])
   const shownNodes = useMemo<AppNode[]>(
     () =>
       nodes.map((n) => {
+        const issues = issuesByNode.get(n.id)
         if (n.type === 'chip') {
           const stored = view?.stored?.[n.id]
-          return stored === undefined ? n : { ...n, data: { ...n.data, stored } }
+          if (stored === undefined && !issues) return n
+          return { ...n, data: { ...n.data, ...(stored !== undefined ? { stored } : {}), ...(issues ? { issues } : {}) } }
         }
         // Input pins show a value badge only for a result row; live inputs are typed into the pin box.
         const value = n.type === 'inpin' ? view?.rowInputs?.[n.data.name] : view?.outputs[n.data.name]
-        return { ...n, data: { ...n.data, value } } as AppNode
+        return { ...n, data: { ...n.data, value, ...(issues ? { issues } : {}) } } as AppNode
       }),
-    [nodes, view],
+    [nodes, view, issuesByNode],
   )
   const shownEdges = useMemo<Edge[]>(
     () =>
