@@ -4,9 +4,9 @@ A web app for **building Nand2Tetris chips visually**: drag built-in chips onto 
 together, and check the result against the exercise's own `.tst` / `.cmp` files, with a ✅ / ❌ for every row.
 Everything runs in your browser; nothing is uploaded anywhere.
 
-![Hack Chip Lab: the Mirror16 chip selected, wired with Split and Join, binary values on the pins and all 7 test rows passing](docs/screenshot.png)
+![Hack Chip Lab: the Pick4of16 chip selected, built from three Mux16 chips and two bit-range handles on the sel pin, binary values on the pins and all 5 test rows passing](docs/screenshot.png)
 
-_Mirror16 (a bit reversal built from Split and Join): the chip and its files in the top bar, binary / decimal / hex values on the pins for the selected test row, and 7 / 7 test rows passed._
+_Pick4of16 (choose one of four 16-bit inputs) built from three Mux16 chips. The two bits of `sel` come from range handles on the pin itself, with no Split node. Binary / decimal / hex values are shown on the pins, and 5 / 5 test rows passed._
 
 ## Quick start
 
@@ -36,7 +36,7 @@ Then open the address Vite prints (usually http://localhost:5173).
   the board (wires turn green for 1, gray for 0). **Show expected** displays the `.cmp` table.
 - **Values you can read:** pins and wires show their value in binary (grouped by 4 bits), decimal and hex; the
   toolbar's format switch chooses which. Input pins have clickable bit buttons next to the decimal box.
-- **Clock:** Tick / Tock / Step / Reset with a cycle counter and the stored value of every DFF and PC.
+- **Clock:** Tick / Tock / Step / Reset with a cycle counter and the stored value of every register chip (DFF, Bit, Register, PC ...).
 - **Editing:** select a chip, pin or wire and press Delete / Backspace (or use **Delete selected**).
 - **Autosave:** every chip keeps its own circuit in your browser's local storage.
 
@@ -76,14 +76,18 @@ files is ignored by git on purpose.
 ## Known limitations
 
 - **No CPU, Memory or Computer yet:** there is no ROM, screen or keyboard, and `.hack` programs cannot be loaded.
-- **Sequential support is basic:** DFF, PC and the RAM chips work with Tick / Tock / Step and `tick` / `tock` /
-  `ticktock` in `.tst` scripts, but a `.tst` cannot read or set a chip's internal state (`RAM16K[0]`, `PC[]`).
+- **Sequential support is basic:** DFF, Bit, Register, ARegister, DRegister, PC and the RAM chips work with
+  Tick / Tock / Step and `tick` / `tock` / `ticktock` in `.tst` scripts, but a `.tst` cannot read or set a chip's
+  internal state (`RAM16K[0]`, `PC[]`).
+- **A feedback loop through only a RAM chip is rejected** as a cycle (e.g. `RAM8` out → `Inc16` → `RAM8` in),
+  although real hardware allows it. Loops through DFF, Bit, Register and PC are fine.
 - **No reusable chips:** you cannot save your own circuit and use it as a chip inside another one.
 - **Only the `.hdl` interface is read**, never its implementation.
 - **Only a subset of `.tst`** is supported (`set`, `eval`, `tick`, `tock`, `ticktock`, `output`, `output-list`,
   `repeat`); other commands are skipped with a warning, and bus indexing such as `set a[0] 1` is an error.
 - **Every pin and bus is at most 16 bits wide.**
-- Split / Join settings cannot be edited after you drop the node (delete it and drop a new one).
+- **Bit ranges on pins cannot be edited:** delete the range (`×`) and add a new one. Split / Join settings
+  likewise cannot be edited after you drop the node (delete it and drop a new one).
 - Very large circuits and very long result tables are not optimized yet.
 - Tested only in a Chromium-based browser.
 
