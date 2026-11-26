@@ -42,7 +42,7 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
     legal, they show a "stored" badge); a RAM's out depends only on `address` (see the engine rules). DFF16 (= 16 DFFs side by side) predates buses and is KEPT because
     the sequential tests build Register/RAM8 from it.
   - Project 5 – Computer (sidebar section "Project 5 – Computer", definitions in `engine/projectFive.ts`; stage 1 of
-    `docs/ADR-R2-project5.md`, CPU and Computer come later): **ROM32K** (address[15] → out[16], read-only program memory,
+    `docs/ADR-R2-project5.md`; CPU and Computer are stage 2, next bullet): **ROM32K** (address[15] → out[16], read-only program memory,
     32768 words), **Screen** (in[16], load, address[13] → out[16], 8192 words), **Keyboard** (out[16], the key code that
     is held, 0 = none), **Memory** (in[16], load, address[15] → out[16]: RAM16K at 0..16383, Screen at 16384..24575,
     Keyboard word at 24576 (read-only), 24577..32767 read 0 and ignore writes). Reads are combinational, writes happen at
@@ -50,6 +50,24 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
     the ROM32K program and the Keyboard key. The ROM32K block has a dropdown of the loaded `.hack` files and shows how many
     instructions it holds; Keyboard and Memory have a "key" number box (changing it does not restart a running
     simulation). The chosen file name / key are saved in the node data (`hackFile`, `keyValue`; `storage.ts` keeps them).
+  - **CPU** (inM[16], instruction[16], reset → outM[16], writeM, addressM[15], pc[15]) and **Computer** (input reset
+    only; ROM32K + CPU + Memory with Screen and Keyboard inside one block). Logic in `engine/cpu.ts` (pure: `alu`,
+    `cpuOutputs`, `cpuNext`), chip definitions in `engine/projectFive.ts`. Exact timing of A, D and PC, the same two phases
+    as every clocked chip: **tick** samples inM, instruction and reset together with the CURRENT A, D, PC and computes the
+    next A, D, PC (outputs do not change); **tock** makes them current (addressM and pc change). The ALU reads the OLD A
+    and D, a jump goes to the OLD A (even if the same instruction writes A), `reset` forces PC to 0 for that cycle (it beats
+    a jump) but the instruction still writes A / D. Only instruction bit 15 chooses A- or C-instruction. PC is 15 bits and
+    wraps. Dependencies: `deps = { outM, writeM: [inM, instruction], addressM: [], pc: [] }`, so a fetch loop through `pc`
+    is legal and a loop through `outM` (e.g. outM → Memory.address) is a cycle error. For an A-instruction outM is the ALU
+    run on the address bits (a "don't care", like the official HDL). Computer: tick fetches rom[PC], reads inM = memory[A],
+    computes next registers and a pending write (writeM: address A, value outM); tock commits both. Reset button =
+    A, D, PC, RAM, Screen cleared, ROM program and key kept; the `reset` pin only forces PC to 0. The Computer block has the
+    same program dropdown as ROM32K plus the key box, and shows PC as its "stored" badge.
+  - **Internal state for stage 3:** `SeqBehavior.exposes` maps built-in chip TYPES to a register name
+    (`CPU` and `Computer`: `{ ARegister: 'A', DRegister: 'D', PC: 'PC' }`), `peekReg` / `pokeReg` read and write it
+    (A, D masked to 16 bits, PC to 15), `Simulator.peekRegister / pokeRegister(chipId, 'A' | 'D' | 'PC')`; memory words via
+    `Simulator.peek / poke(chipId, address)` (Computer: the Memory map). The `.tst` syntax (`ARegister[]`, `ROM32K load`)
+    is NOT built yet (stage 3).
   - **`.hack` files** (`engine/hack.ts` `parseHack`): one 16-character 0/1 instruction per line; blank lines, spaces,
     a BOM and CRLF are fine; any other line is skipped WITH a warning naming its line number (at most 20 warnings, then
     "... and N more"); more than 32768 instructions is an error. `.hack` is a 4th accepted extension in file loading,
@@ -142,7 +160,8 @@ src/
     tst.ts         # .tst subset (set/eval/tick/tock/output/repeat/output-list) + compareToCmp
     hdl.ts         # .hdl INTERFACE parser (IN/OUT only)
     hack.ts        # .hack parser (16-character 0/1 lines → words, warnings with line numbers)
-    projectFive.ts # ROM32K, Screen, Keyboard, Memory (imported by chips.ts; only types are imported back, no cycle)
+    cpu.ts         # pure Hack CPU logic: alu, cpuOutputs, cpuNext (used by the CPU and Computer chips)
+    projectFive.ts # ROM32K, Screen, Keyboard, Memory, CPU, Computer (imported by chips.ts; only types are imported back, no cycle)
     bus.ts         # Split / Join / Const: busDef (pins+eval from params), parseRanges, busErrors (validation)
     resolve.ts     # chipOf(instance): CHIPS entry or a bus node built from its params
     exercise.ts    # groupExerciseFiles (Name.hdl/.tst/.cmp → chips) and runExercise (.tst + .cmp)
@@ -182,7 +201,8 @@ tests/         # end-to-end tests; fixtures/buses/ = 3 INVENTED chips (hdl/tst/c
   target pin. `read(inp, state)` of such a chip gets ONLY the inputs of one group and must compute each output from its
   own deps. Result: ROM.out → CPU.instruction → CPU.pc/addressM → ROM.address is a legal fetch loop when `pc` has no
   deps, but a loop through an output that DOES depend on the input (`outM` → address) is still a cycle error.
-  No built-in chip uses `deps` yet (the built-in CPU / Computer come in stage 2); it is covered by a test-only chip.
+  The built-in CPU is the only chip that uses `deps` (a test-only chip covers the generic rule too). A clocked chip
+  WITHOUT outputs (Computer) is still one step (`outputs: []`), otherwise it would never run and never latch its inputs.
 - Clocked chips can implement optional hooks: `init(inst)` (gets the circuit instance: ROM32K `program`, Keyboard `key`),
   `reset(state)` (keep program / key, clear memories in place; without it the state is recreated), `loadRom`, `setKey`,
   `peek` / `poke`. `Simulator` exposes `loadRom(words)`, `setKeyboard(key, chipId?)`, `peek(chipId, i)`, `poke(...)`.

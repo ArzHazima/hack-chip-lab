@@ -48,9 +48,11 @@ Then open the address Vite prints (usually http://localhost:5173).
   the board (wires turn green for 1, gray for 0). **Show expected** displays the `.cmp` table.
 - **Values you can read:** pins and wires show their value in binary (grouped by 4 bits), decimal and hex; the
   toolbar's format switch chooses which. Input pins have clickable bit buttons next to the decimal box.
-- **Project 5 memory blocks:** ROM32K (pick a loaded `.hack` program), Screen, Keyboard and Memory (RAM16K +
-  Screen + Keyboard in the Hack address map). Load `.hack` files with **Load folder** / **Load files**; the
-  CPU and Computer blocks are planned (see `docs/ADR-R2-project5.md`).
+- **Project 5 blocks:** ROM32K (pick a loaded `.hack` program), Screen, Keyboard, Memory (RAM16K + Screen +
+  Keyboard in the Hack address map), **CPU** and **Computer** (ROM + CPU + memory in one block that runs the chosen
+  program, about 400,000 cycles per second). Load `.hack` files with **Load folder** / **Load files**. You can also
+  build the Computer yourself from the ROM32K, CPU and Memory blocks. Not built yet: `.tst` access to A / D / PC, the
+  screen and keyboard view (see `docs/ADR-R2-project5.md`).
 - **Clock:** Tick / Tock / Step / Reset with a cycle counter and the stored value of every register chip (DFF, Bit, Register, PC ...).
 - **Editing:** select a chip, pin or wire and press Delete / Backspace (or use **Delete selected**).
 - **Autosave:** every chip keeps its own circuit in your browser's local storage.

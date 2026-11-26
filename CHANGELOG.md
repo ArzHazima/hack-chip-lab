@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Project 5, stage 2: native CPU and Computer
+- **CPU** and **Computer** built-in chips in the "Project 5 – Computer" section, with Hack semantics: A and D
+  registers, PC, ALU, all 8 jump conditions, every destination combination, `reset` on PC. Timing: tick samples the
+  inputs and the current A, D, PC and computes the next ones, tock makes them current; the ALU and a jump use the OLD A.
+- **Per-output dependencies in use:** CPU `addressM` and `pc` depend on no input, `outM` and `writeM` on `inM` and
+  `instruction`. A Computer built on the board from ROM32K + CPU + Memory is accepted (no false cycle) and matches the
+  native one cycle by cycle; a loop `outM` → address is still rejected.
+- **Computer** has only a `reset` input; it takes its program from the `.hack` dropdown in the node (like ROM32K) and has a
+  key box. The Reset button clears A, D, PC, RAM and Screen and keeps the program.
+- **Internal state for stage 3:** `peekRegister` / `pokeRegister` (A, D, PC) and `peek` / `poke` (memory) on the
+  Simulator, and `exposes` (chip type → register) on CPU and Computer. The `.tst` syntax for it is not built yet.
+- **Speed:** the native Computer runs about 400,000 clock cycles per second (counting loop, Node 24, this machine);
+  the same machine built from ROM32K + CPU + Memory blocks about 77,000.
+- Tests: 273 → 368 (CPU: A-instruction, 28 computations, 8 destinations, 8 jumps x 3 results, reset, timing, ALU
+  cross-check; five hand-traced Computer programs; cycle rules with the real chips).
+- A clocked chip with no outputs now still gets a planner step (it used to be skipped).
+
 ### Project 5, stage 1: memory system (see `docs/ADR-R2-project5.md`)
 - **New built-in chips** in a "Project 5 – Computer" sidebar section: **ROM32K** (program memory), **Screen**
   (8K words), **Keyboard** and **Memory** (RAM16K at 0..16383, Screen at 16384..24575, Keyboard at 24576).

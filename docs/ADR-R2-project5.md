@@ -156,3 +156,20 @@ Changes from the design above, and why:
 - **`planOrder` / `orderChips` return `PlanStep[]`** (`{ chip, outputs?, deps? }`) instead of `string[]`; `evaluate` takes the same. Only `perf.test.ts` and `runTests.ts` pass it through. No built-in chip uses `deps` yet: the native CPU is stage 2, so the rule is tested with a test-only chip that has the CPU's dependencies (`outM` on `inM`/`instruction`; `pc`, `addressM` on nothing).
 - **More than 32768 `.hack` instructions is an error** (as designed); invalid lines are skipped with a warning naming the line, and the warning says later instructions move up by one address.
 - **Not done in this stage (still open in the plan):** the "tick and tock evaluate once each" cheap fix, and the lazy snapshot replay.
+
+## Stage 2 as built (2026-11-26)
+- **CPU timing is defined exactly** (the ADR only said "hand-trace tables"): tick samples inM, instruction, reset and the
+  current A, D, PC and computes the next ones; tock commits. The ALU and a jump use the OLD A and D. `reset` forces PC to
+  0 for that cycle and does not stop the instruction from writing A or D (as the official HDL, where reset only drives
+  the PC). Only instruction bit 15 is decoded as A/C; bits 14 and 13 are ignored.
+- **`deps` as designed:** `outM`, `writeM` depend on `inM` and `instruction`; `addressM` and `pc` on nothing. `writeM` also
+  depends on `inM` in the declaration (the ADR listed only `instruction`) because both come out of one group; this only
+  makes the planner slightly more conservative and removes nothing legal that a real wiring needs.
+- **A chip without outputs needed a planner fix** (Computer): it was given no step, so its inputs were never latched.
+- **`expose` is a table, not yet a lookup:** `SeqBehavior.exposes` (type to register name) plus `peekReg` / `pokeReg` and
+  `Simulator.peekRegister / pokeRegister`. The ADR's `peek(state, index?)` stays for memory words. The `Type[]` resolution
+  rule and the `.tst` syntax are still stage 3.
+- **Computer has the program dropdown and a key box**, not the ADR's separate Computer view (stage 4).
+- **Speed (decision 3):** the native Computer measures about 400,000 cycles per second; ROM32K + CPU + Memory blocks wired
+  on the board about 77,000. A CPU built from gates is still expected near the ADR's 2,000 per second, so stage 5
+  (compile-once) is still the answer for user-built machines.
