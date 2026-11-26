@@ -138,6 +138,8 @@ function stepsOf(inst: ChipInstance): PlanStep[] {
     g.outputs.push(o.name)
     groups.set(k, g)
   }
+  // A clocked chip without outputs (the Computer) is still one step: it must run so that its inputs get latched.
+  if (groups.size === 0) return [{ chip: inst.id, outputs: [], deps: seq.combInputs }]
   return [...groups.values()].map((g) => ({ chip: inst.id, outputs: g.outputs, deps: g.deps }))
 }
 

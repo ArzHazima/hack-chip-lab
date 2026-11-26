@@ -5,8 +5,8 @@ const ev = (name: string, inp: Record<string, number>) => CHIPS[name].eval(inp)
 const bits = [0, 1]
 
 describe('built-in chips', () => {
-  it('defines all 37 chips and every one appears in exactly one palette group', () => {
-    expect(CHIP_NAMES).toHaveLength(37)
+  it('defines all 39 chips and every one appears in exactly one palette group', () => {
+    expect(CHIP_NAMES).toHaveLength(39)
     const grouped = CHIP_GROUPS.flatMap((g) => g.chips)
     expect([...grouped].sort()).toEqual([...CHIP_NAMES].sort())
   })

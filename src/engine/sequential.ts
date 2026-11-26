@@ -100,6 +100,23 @@ export class Simulator {
     return inst && seq?.peek ? seq.peek(stateOf(this.states, inst), index) : undefined
   }
 
+  /**
+   * An internal register of a CPU or Computer: "A", "D" or "PC" (see `SeqBehavior.exposes`). Undefined for another
+   * chip or name.
+   */
+  peekRegister(chipId: string, name: string): number | undefined {
+    const inst = this.circuit.chips.find((x) => x.id === chipId)
+    const seq = inst && chipOf(inst)?.seq
+    return inst && seq?.peekReg ? seq.peekReg(stateOf(this.states, inst), name) : undefined
+  }
+
+  /** Set A, D or PC directly, without the clock (A and D keep 16 bits, PC 15). Unknown names are ignored. */
+  pokeRegister(chipId: string, name: string, value: number): void {
+    const inst = this.circuit.chips.find((x) => x.id === chipId)
+    const seq = inst && chipOf(inst)?.seq
+    if (inst && seq?.pokeReg) seq.pokeReg(stateOf(this.states, inst), name, value)
+  }
+
   /** Write a stored word directly, without the clock. Ignored for chips without `poke` (ROM32K is read-only). */
   poke(chipId: string, index: number, value: number): void {
     const inst = this.circuit.chips.find((x) => x.id === chipId)

@@ -26,7 +26,7 @@ function single(type: string, extra: { program?: number[]; key?: number } = {}):
 describe('Project 5 sidebar section', () => {
   it('lists the four chips; each exists, is clocked and is listed once', () => {
     const g = CHIP_GROUPS.find((x) => x.title.startsWith('Project 5'))
-    expect(g?.chips).toEqual(['ROM32K', 'Screen', 'Keyboard', 'Memory'])
+    expect(g?.chips).toEqual(['ROM32K', 'Screen', 'Keyboard', 'Memory', 'CPU', 'Computer'])
     for (const n of g!.chips) expect(CHIPS[n]?.seq, n).toBeDefined()
     const all = CHIP_GROUPS.flatMap((x) => x.chips)
     expect(new Set(all).size).toBe(all.length)

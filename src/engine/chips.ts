@@ -59,6 +59,17 @@ export interface SeqBehavior {
   peek?(state: unknown, index?: number): number
   /** Write one stored word directly (no clock). Read-only chips (ROM32K) have none. */
   poke?(state: unknown, index: number, value: number): void
+  /** CPU / Computer: read an internal register by name ("A", "D", "PC"). Undefined for an unknown name. */
+  peekReg?(state: unknown, name: string): number | undefined
+  /** CPU / Computer: write an internal register by name, masked to its width (A, D 16 bits; PC 15 bits). */
+  pokeReg?(state: unknown, name: string, value: number): void
+  /**
+   * Which built-in chip TYPES live inside this block and which register name reaches each one, e.g.
+   * { ARegister: 'A', DRegister: 'D', PC: 'PC' } for CPU and Computer. The stage 3 .tst syntax (ARegister[], PC[])
+   * resolves by chip type through this table, so a built-in CPU and a CPU built from ARegister + DRegister + PC
+   * blocks answer the same names.
+   */
+  exposes?: Readonly<Record<string, string>>
 }
 
 export interface ChipDef {
@@ -371,6 +382,6 @@ export const CHIP_GROUPS: { title: string; chips: string[] }[] = [
   {
     // Program memory (loaded from a .hack file), the screen, the keyboard and the Hack data memory map.
     title: 'Project 5 – Computer',
-    chips: ['ROM32K', 'Screen', 'Keyboard', 'Memory'],
+    chips: ['ROM32K', 'Screen', 'Keyboard', 'Memory', 'CPU', 'Computer'],
   },
 ]
