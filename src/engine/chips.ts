@@ -2,6 +2,9 @@
 // with bit widths, plus a pure `eval` function mapping input values to output values.
 // Signals are plain numbers; a 16-bit bus is a number in 0..65535.
 
+import type { ChipInstance } from './circuit'
+import { PROJECT5_CHIPS } from './projectFive'
+
 export interface PinDef {
   name: string
   width: number
@@ -21,16 +24,41 @@ export interface SeqBehavior {
    * the clock tick, so a wire into it creates no dependency and a feedback loop through it is legal
    * (this is how the Nand2Tetris hardware simulator treats these chips):
    *   DFF, Bit, Register, PC ...  []           out comes from the stored state only
-   *   RAM8 .. RAM16K              ['address']  out = memory[address]; in and load are sampled at the tick
+   *   RAM8 .. RAM16K, ROM32K, Screen, Memory   ['address']  out = memory[address]; in and load are sampled at the tick
+   *   Keyboard                    []           out is the key that is held
+   * This is the shorthand for "every output depends on exactly these inputs"; `deps` refines it per output.
    */
   combInputs: readonly string[]
-  init(): unknown
+  /**
+   * Optional, per OUTPUT pin: the inputs that output depends on right now. An output missing from the map
+   * uses `combInputs`. Needed by chips whose outputs differ (a CPU: `pc` and `addressM` come from registers,
+   * `outM` depends on `inM`), so that ROM.out -> CPU -> ROM.address is a normal fetch loop, not a cycle.
+   * Rule for `read`: it is called once per group of outputs that share the same dependencies, with ONLY
+   * those inputs filled in; it must compute each output from its declared inputs (and state) alone.
+   */
+  deps?: Readonly<Record<string, readonly string[]>>
+  /** Fresh state. `inst` is the circuit instance (ROM32K reads `inst.program`, Keyboard / Memory `inst.key`). */
+  init(inst?: ChipInstance): unknown
   /** Current outputs, from the stored state (and, for RAM, the address input). */
   read(inp: Record<string, number>, state: unknown): Record<string, number>
   tick(inp: Record<string, number>, state: unknown): void
   tock(state: unknown): void
   /** A single number to show live on the board (DFF bit, PC counter); undefined = none. */
   stored?(state: unknown): number | undefined
+  /**
+   * Called by Simulator.reset() instead of throwing the state away. Chips without it are simply recreated
+   * (registers go back to 0). RAM / Screen / Memory clear their words but keep their array (allocated once);
+   * ROM32K and Keyboard keep the program / the key: Reset clears the machine, not the program.
+   */
+  reset?(state: unknown): void
+  /** ROM32K: replace the program (extra words beyond 32768 are ignored). */
+  loadRom?(state: unknown, words: ArrayLike<number>): void
+  /** Keyboard / Memory: the key code that is held (0 = none). */
+  setKey?(state: unknown, key: number): void
+  /** Read one stored word (`index` for memories) or the stored value, for tests and the .tst of later stages. */
+  peek?(state: unknown, index?: number): number
+  /** Write one stored word directly (no clock). Read-only chips (ROM32K) have none. */
+  poke?(state: unknown, index: number, value: number): void
 }
 
 export interface ChipDef {
@@ -311,10 +339,14 @@ const seqDefs: ChipDef[] = [
   pc,
 ]
 
-export const CHIPS: Record<string, ChipDef> = Object.fromEntries(
-  [...defs, ...seqDefs].map((d) => [d.name, d]),
-)
-export const CHIP_NAMES: string[] = [...defs, ...seqDefs].map((d) => d.name)
+// Project 5 memory chips live in projectFive.ts (they only need the ChipDef type from this file).
+const allDefs: ChipDef[] = [...defs, ...seqDefs, ...PROJECT5_CHIPS]
+
+export const CHIPS: Record<string, ChipDef> = Object.fromEntries(allDefs.map((d) => [d.name, d]))
+export const CHIP_NAMES: string[] = allDefs.map((d) => d.name)
+
+/** The inputs one OUTPUT of a clocked chip depends on right now: its `deps` entry, else every `combInputs`. */
+export const outputDeps = (seq: SeqBehavior, output: string): readonly string[] => seq.deps?.[output] ?? seq.combInputs
 
 /** Palette sections, one per Nand2Tetris project. */
 export const CHIP_GROUPS: { title: string; chips: string[] }[] = [
@@ -335,5 +367,10 @@ export const CHIP_GROUPS: { title: string; chips: string[] }[] = [
     // (see ui/palette.ts), so the chip cannot be built out of itself.
     title: 'Project 3 – Memory',
     chips: ['DFF', 'DFF16', 'Bit', 'Register', 'ARegister', 'DRegister', 'PC', 'RAM8', 'RAM64', 'RAM512', 'RAM4K', 'RAM16K'],
+  },
+  {
+    // Program memory (loaded from a .hack file), the screen, the keyboard and the Hack data memory map.
+    title: 'Project 5 – Computer',
+    chips: ['ROM32K', 'Screen', 'Keyboard', 'Memory'],
   },
 ]

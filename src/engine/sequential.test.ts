@@ -444,7 +444,8 @@ describe('.tst parser and runner', () => {
   it('stops runaway scripts instead of hanging', () => {
     const t = parseTst('repeat 999999999 { tick, tock; }')
     expect(() => runTst(toggleCircuit(), t)).toThrow(/too long/)
-  })
+    // Runs a million clock cycles (about 4 s alone); the default 5 s limit fails when all test files run in parallel.
+  }, 30_000)
 
   it('compareToCmp flags the wrong row and a wrong row count', () => {
     const bad = BIT_CMP.replace('| 4   |  1 |  1 |  1  |', '| 4   |  1 |  1 |  0  |')

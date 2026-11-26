@@ -2,7 +2,7 @@
 // topological order (a chip runs only after every chip feeding it has run).
 
 import { busErrors, isBusType } from './bus'
-import { MAX_WIDTH, mask, type ChipDef } from './chips'
+import { MAX_WIDTH, mask, outputDeps, type ChipDef } from './chips'
 import { chipOf } from './resolve'
 import { describeEndpoint, isChipEndpoint, type ChipInstance, type Circuit, type CircuitPin, type Endpoint } from './circuit'
 
@@ -105,8 +105,9 @@ export function validateCircuit(c: Circuit): string[] {
 /** Per-instance state of every sequential chip, keyed by chip id. */
 export type ChipStates = Map<string, unknown>
 
-function stateOf(states: ChipStates, inst: ChipInstance): unknown {
-  if (!states.has(inst.id)) states.set(inst.id, chipOf(inst)!.seq!.init()) // created on first use
+/** The state of a clocked chip instance; created (from the instance, e.g. its ROM program) on first use. */
+export function stateOf(states: ChipStates, inst: ChipInstance): unknown {
+  if (!states.has(inst.id)) states.set(inst.id, chipOf(inst)!.seq!.init(inst))
   return states.get(inst.id)
 }
 
@@ -114,15 +115,44 @@ function stateOf(states: ChipStates, inst: ChipInstance): unknown {
 export const hasSequential = (c: Circuit): boolean => c.chips.some((x) => chipOf(x)?.seq)
 
 /**
+ * One step of the evaluation order. An ordinary chip is one step (`outputs` / `deps` undefined = all of it).
+ * A clocked chip is one step per GROUP of outputs that share the same dependencies (see `SeqBehavior.deps`):
+ * the step computes only `outputs`, from only the inputs in `deps`.
+ */
+export interface PlanStep {
+  chip: string
+  outputs?: readonly string[]
+  deps?: readonly string[]
+}
+
+/** The steps a chip is made of: one, unless it is a clocked chip whose outputs have different dependencies. */
+function stepsOf(inst: ChipInstance): PlanStep[] {
+  const def = chipOf(inst)
+  const seq = def?.seq
+  if (!def || !seq) return [{ chip: inst.id }]
+  const groups = new Map<string, { outputs: string[]; deps: readonly string[] }>()
+  for (const o of def.outputs) {
+    const deps = outputDeps(seq, o.name)
+    const k = [...deps].sort().join('|')
+    const g = groups.get(k) ?? { outputs: [], deps }
+    g.outputs.push(o.name)
+    groups.set(k, g)
+  }
+  return [...groups.values()].map((g) => ({ chip: inst.id, outputs: g.outputs, deps: g.deps }))
+}
+
+/**
  * Validates the circuit and returns the order in which its chips must be evaluated.
  *
- * Ordering is a topological sort (Kahn's algorithm). A wire u → v.pin means "u before v", EXCEPT when v is a
- * clocked chip and `pin` is not one of its `combInputs`: such an input is only sampled at the clock tick,
- * so it does not affect any output now. That is exactly what makes a feedback loop legal if (and only if)
- * it enters a clocked chip through one of those inputs (DFF/Register/PC in, load ...; RAM in, load).
+ * Ordering is a topological sort (Kahn's algorithm) over STEPS. A wire u.o → v.pin means "the step of u that
+ * produces o runs before every step of v that depends on pin". For a clocked chip, `pin` creates a dependency
+ * only if some output depends on it (`SeqBehavior.deps`, default `combInputs`): every other input is only sampled
+ * at the clock tick, so it affects no output right now. That is exactly what makes a feedback loop legal if (and
+ * only if) it enters a clocked chip through an input that its outputs do not depend on (DFF/Register/PC in, load ...;
+ * RAM in, load; a CPU's inM matters only for outM, so ROM.out → CPU → ROM.address through pc is a normal fetch loop).
  * A loop through RAM.address (RAM.out depends on it immediately) is still a cycle.
  */
-export function planOrder(c: Circuit): string[] {
+export function planOrder(c: Circuit): PlanStep[] {
   const errors = validateCircuit(c)
   if (errors.length) throw new CircuitError(errors)
   return orderChips(c)
@@ -133,34 +163,43 @@ export function planOrder(c: Circuit): string[] {
  * (runTests validates once, together with the .cmp columns, then plans once).
  * Throws CircuitError on a feedback loop that is purely combinational.
  */
-export function orderChips(c: Circuit): string[] {
-  // For each clocked chip: the input pins that DO matter right now (all others break the dependency).
-  const comb = new Map<string, readonly string[]>()
+export function orderChips(c: Circuit): PlanStep[] {
+  // Nodes of the graph = steps. Key = chip id, plus "\0<n>" for the n-th group of a chip split into several.
+  const steps = new Map<string, PlanStep>()
+  const stepsByChip = new Map<string, { key: string; step: PlanStep }[]>()
   for (const x of c.chips) {
-    const seq = chipOf(x)?.seq
-    if (seq) comb.set(x.id, seq.combInputs)
+    const list = stepsOf(x).map((step, i, all) => ({ key: all.length === 1 ? x.id : `${x.id}\u0000${i}`, step }))
+    stepsByChip.set(x.id, list)
+    for (const { key: k, step } of list) steps.set(k, step)
   }
-  const indegree = new Map<string, number>(c.chips.map((x) => [x.id, 0]))
+  const indegree = new Map<string, number>([...steps.keys()].map((k) => [k, 0]))
   const downstream = new Map<string, string[]>()
   for (const w of c.wires) {
     if (!isChipEndpoint(w.from) || !isChipEndpoint(w.to)) continue
-    const live = comb.get(w.to.chip)
-    if (live && !live.includes(w.to.pin)) continue // sampled at the tick only: breaks the dependency
-    indegree.set(w.to.chip, (indegree.get(w.to.chip) ?? 0) + 1)
-    downstream.set(w.from.chip, [...(downstream.get(w.from.chip) ?? []), w.to.chip])
+    const srcPin = w.from.pin
+    const from = (stepsByChip.get(w.from.chip) ?? []).find((s) => !s.step.outputs || s.step.outputs.includes(srcPin))
+    if (!from) continue
+    for (const to of stepsByChip.get(w.to.chip) ?? []) {
+      // A clocked chip's step depends on a pin only if its group lists it (other pins are sampled at the tick).
+      if (to.step.deps && !to.step.deps.includes(w.to.pin)) continue
+      indegree.set(to.key, (indegree.get(to.key) ?? 0) + 1)
+      downstream.set(from.key, [...(downstream.get(from.key) ?? []), to.key])
+    }
   }
-  const queue = c.chips.filter((x) => indegree.get(x.id) === 0).map((x) => x.id)
-  const order: string[] = []
+  const queue = [...steps.keys()].filter((k) => indegree.get(k) === 0)
+  const order: PlanStep[] = []
+  const done = new Set<string>()
   while (queue.length) {
-    const id = queue.shift()!
-    order.push(id)
-    for (const next of downstream.get(id) ?? []) {
+    const k = queue.shift()!
+    order.push(steps.get(k)!)
+    done.add(k)
+    for (const next of downstream.get(k) ?? []) {
       indegree.set(next, indegree.get(next)! - 1)
       if (indegree.get(next) === 0) queue.push(next)
     }
   }
-  if (order.length < c.chips.length) {
-    const stuck = c.chips.filter((x) => !order.includes(x.id)).map((x) => x.id)
+  if (order.length < steps.size) {
+    const stuck = [...new Set([...steps].filter(([k]) => !done.has(k)).map(([, s]) => s.chip))]
     throw new CircuitError([
       `Cycle detected (feedback loop) involving: ${stuck.join(', ')}. ` +
         'A loop is only allowed if it enters a clocked chip (DFF, Bit, Register, PC, RAM) through an input that is ' +
@@ -176,7 +215,7 @@ export function orderChips(c: Circuit): string[] {
  */
 export function evaluate(
   c: Circuit,
-  order: string[],
+  order: PlanStep[],
   inputs: Record<string, number>,
   states: ChipStates,
 ): SimResult {
@@ -190,18 +229,23 @@ export function evaluate(
   const wireInto = new Map(c.wires.map((w) => [key(w.to), w]))
   const instOf = new Map(c.chips.map((x) => [x.id, x]))
   const chipInputs: Record<string, Record<string, number>> = {}
-  const clocked: string[] = [] // sequential chips: their sampled inputs are read after everything settled
-  for (const id of order) {
+  const clocked = new Set<string>() // sequential chips: their sampled inputs are read after everything settled
+  for (const step of order) {
+    const id = step.chip
     const inst = instOf.get(id)!
     const def = chipOf(inst)!
     const inp: Record<string, number> = {}
     if (def.seq) {
-      // Only the combinational inputs (RAM address) are ready now; in / load may still depend on this
-      // very chip's output further down the loop. They are read below, once all values are known.
-      for (const name of def.seq.combInputs) inp[name] = values.get(key(wireInto.get(`${id}.${name}`)!.from))!
+      // Only the inputs this group of outputs depends on (RAM address, a CPU's inM ...) are ready now; the others
+      // (in / load ...) may still depend on this very chip further down the loop. They are read below, once all
+      // values are known.
+      for (const name of step.deps!) inp[name] = values.get(key(wireInto.get(`${id}.${name}`)!.from))!
       const out = def.seq.read(inp, stateOf(states, inst))
-      for (const p of def.outputs) values.set(`${id}.${p.name}`, mask(out[p.name], p.width))
-      clocked.push(id)
+      for (const name of step.outputs!) {
+        const p = def.outputs.find((o) => o.name === name)!
+        values.set(`${id}.${name}`, mask(out[name], p.width))
+      }
+      clocked.add(id)
     } else {
       for (const p of def.inputs) inp[p.name] = values.get(key(wireInto.get(`${id}.${p.name}`)!.from))!
       chipInputs[id] = inp

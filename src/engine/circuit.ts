@@ -28,6 +28,10 @@ export interface ChipInstance {
   id: string
   type: string // a key of CHIPS, or 'Split' | 'Join' | 'Const' (see bus.ts)
   params?: ChipParams
+  /** ROM32K: the loaded program (one 16-bit word per instruction). Kept by Reset. Not saved with the board. */
+  program?: readonly number[]
+  /** Keyboard and Memory: the key code the chip starts with (0 = no key). */
+  key?: number
 }
 
 /**
