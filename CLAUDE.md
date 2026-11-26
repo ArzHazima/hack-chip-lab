@@ -165,7 +165,7 @@ tests/         # end-to-end tests; fixtures/buses/ = 3 INVENTED chips (hdl/tst/c
   `evaluate()` per row; `validateCircuit` is O(C + W + P) (Map lookups, error text built only on an error). Never put
   validation or planning inside a per-row loop (`perf.test.ts` guards this).
 - .hdl: every `IN`/`OUT` declaration must end with `;`; one that does not is a parse error, never silently dropped.
-- `.tst`: `repeat N { }` capped at 1,000,000 commands. Commands: `set`, `eval`, `tick`, `tock`, `ticktock` (= tick then
+- `.tst`: `repeat N { }` capped at 1,000,000 commands and 5,000,000 loop iterations (empty bodies count), nesting at 100, output rows at 100,000. Commands: `set`, `eval`, `tick`, `tock`, `ticktock` (= tick then
   tock), `output`, `output-list`, `repeat`. `set` values: decimal, `%D`, `%B`, `%X`; a value that does not fit the pin
   width is cut (mask) and reported as a warning, once per distinct message. `output-list` formats
   `%B %D %X %S` (`name%B2.1.2` = pad, length, pad); a new `output-list` REPLACES the active columns (rows use the list

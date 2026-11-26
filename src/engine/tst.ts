@@ -13,6 +13,7 @@ import { mask } from './chips'
 import type { Circuit } from './circuit'
 import { CircuitError } from './simulate'
 import { Simulator } from './sequential'
+import { stripComments } from './text'
 
 export class TstParseError extends Error {
   constructor(message: string) {
@@ -44,10 +45,12 @@ export interface Tst {
   warnings: string[] // e.g. unknown commands that were ignored
 }
 
+/** Deepest allowed `repeat` nesting; also keeps the recursive parser and runner off the stack limit. */
+const MAX_NESTING = 100
 const IGNORED = new Set(['load', 'output-file', 'compare-to', 'echo', 'clear-echo'])
 
 function tokenize(text: string): string[] {
-  const noComments = text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ')
+  const noComments = stripComments(text)
   return noComments.match(/[{},;]|[^\s{},;]+/g) ?? []
 }
 
@@ -95,7 +98,7 @@ export function parseTst(text: string): Tst {
     }
   }
 
-  function block(nested: boolean): TstCommand[] {
+  function block(nested: boolean, depth: number): TstCommand[] {
     const cmds: TstCommand[] = []
     for (;;) {
       skipSeparators()
@@ -128,14 +131,15 @@ export function parseTst(text: string): Tst {
         if (!/^\d+$/.test(count ?? '')) throw new TstParseError('"repeat" needs a number: repeat 5 { ... }')
         pos++
         if (toks[pos++] !== '{') throw new TstParseError('"repeat N" must be followed by "{"')
-        cmds.push({ op: 'repeat', count: +count, body: block(true) })
+        if (depth >= MAX_NESTING) throw new TstParseError(`repeat blocks are nested too deeply (more than ${MAX_NESTING} levels)`)
+        cmds.push({ op: 'repeat', count: +count, body: block(true, depth + 1) })
       } else {
         skipUnknown(word)
       }
     }
   }
 
-  const commands = block(false)
+  const commands = block(false, 0)
   return { outputList, commands, warnings }
 }
 
@@ -157,7 +161,13 @@ export interface TstOutput {
   warnings: string[] // values that did not fit and digits that were cut off (each reported once)
 }
 
-const MAX_COMMANDS = 1_000_000 // guards against `repeat 999999999 { ... }` hanging the tab
+// Two budgets. Real commands (tick/tock/eval ... run the simulator, ~10 us each) keep the old cap of
+// 1,000,000. Loop iterations are cheap, so they get their own cap of 5,000,000 and count even when the body
+// is empty: `repeat 99999999999 { }` and nested empty repeats are bounded too. Output rows have a smaller
+// cap again (memory: every row keeps a snapshot).
+const MAX_COMMANDS = 1_000_000
+const MAX_ITERATIONS = 5_000_000
+const MAX_ROWS = 100_000
 
 function formatCell(col: OutputCol, value: number | string, width: number): string {
   let s: string
@@ -183,6 +193,7 @@ export function runTst(circuit: Circuit, tst: Tst): TstOutput {
   const snapshots: Snapshot[] = []
   const warnings = new Set<string>() // a Set, so a warning inside a long repeat is reported once
   let budget = MAX_COMMANDS
+  let iterations = MAX_ITERATIONS
 
   let active: OutputCol[] = [] // the output-list currently in effect
   const row = (): string => {
@@ -232,9 +243,17 @@ export function runTst(circuit: Circuit, tst: Tst): TstOutput {
         case 'tock': sim.tock(inputs); break
         case 'ticktock': sim.tick(inputs); sim.tock(inputs); break
         case 'output-list': active = cmd.cols; break
-        case 'output': rows.push(row()); break
+        case 'output':
+          if (rows.length >= MAX_ROWS) {
+            throw new CircuitError([`.tst script produced too many output rows (more than ${MAX_ROWS.toLocaleString('en-US')})`])
+          }
+          rows.push(row())
+          break
         case 'repeat':
-          for (let i = 0; i < cmd.count; i++) exec(cmd.body)
+          for (let i = 0; i < cmd.count; i++) {
+            if (--iterations < 0) throw new CircuitError(['.tst script is too long (over 5,000,000 loop iterations; empty loops count too)'])
+            exec(cmd.body)
+          }
           break
       }
     }

@@ -8,6 +8,7 @@
 //   }
 
 import { MAX_WIDTH } from './chips'
+import { stripComments } from './text'
 
 export interface PinSpec {
   name: string
@@ -51,7 +52,7 @@ function parsePins(body: string, kind: 'IN' | 'OUT'): PinSpec[] {
 
 export function parseHdlInterface(text: string): HdlInterface {
   // Remove /* ... */ (also /** ... */) and // comments first, so commented-out pins are ignored.
-  const clean = text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ')
+  const clean = stripComments(text)
 
   const head = clean.match(/\bCHIP\s+([A-Za-z_]\w*)\s*\{/)
   if (!head) throw new HdlParseError('No "CHIP Name {" declaration found')
@@ -63,16 +64,19 @@ export function parseHdlInterface(text: string): HdlInterface {
   const inputs: PinSpec[] = []
   const outputs: PinSpec[] = []
   let found = false
-  for (const m of body.matchAll(/\b(IN|OUT)\b([^;]*);/g)) {
+  // Linear scan: find each IN / OUT keyword, then the next ";". (The old regex did [^;]*; after every keyword and
+  // backtracked: on "IN IN IN ..." without a ";" every keyword rescanned the whole rest of the text.)
+  const keyword = /\b(IN|OUT)\b/g
+  for (let m = keyword.exec(body); m; m = keyword.exec(body)) {
+    const semi = body.indexOf(';', keyword.lastIndex)
+    if (semi < 0) {
+      // This declaration has no ";". Without this check it would be dropped silently.
+      const near = body.slice(m.index, m.index + 200).replace(/\s+/g, ' ').trim().slice(0, 40)
+      throw new HdlParseError(`CHIP ${head[1]}: an ${m[1]} declaration is missing its closing ";" (near "${near}")`)
+    }
     found = true
-    ;(m[1] === 'IN' ? inputs : outputs).push(...parsePins(m[2], m[1] as 'IN' | 'OUT'))
-  }
-  // Whatever IN/OUT text is left after removing every terminated declaration was missing its ";".
-  // Without this check such a declaration would be dropped silently and the chip would lose pins.
-  const unterminated = body.replace(/\b(IN|OUT)\b[^;]*;/g, ' ').match(/\b(IN|OUT)\b[\s\S]*/)
-  if (unterminated) {
-    const near = unterminated[0].replace(/\s+/g, ' ').trim().slice(0, 40)
-    throw new HdlParseError(`CHIP ${head[1]}: an ${unterminated[1]} declaration is missing its closing ";" (near "${near}")`)
+    ;(m[1] === 'IN' ? inputs : outputs).push(...parsePins(body.slice(keyword.lastIndex, semi), m[1] as 'IN' | 'OUT'))
+    keyword.lastIndex = semi + 1 // continue after the ";" (words inside the declaration are not keywords)
   }
   if (!found) throw new HdlParseError(`CHIP ${head[1]} has no IN or OUT declaration`)
 
