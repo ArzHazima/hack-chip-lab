@@ -146,3 +146,13 @@ Also: scope creep of hierarchy (stage 6) — keep "no editing inside a block, no
 
 Testing summary: unit per chip; golden `.hack` programs with hand-computed tables; differential test (compiled vs oracle); `.tst`/`.cmp` fixtures in official
 layout (invented); adversarial cases (huge `.hack`, 32,769 lines, non-binary lines, `Type[99999]`, ambiguous types, a `.tst` that sets Keyboard); keep `security.test.ts` style caps.
+
+## Stage 1 as built (2026-11-26)
+Changes from the design above, and why:
+- **`.hack` is NOT a chip extension in `groupExerciseFiles`** (decision 1.6 said it would be). A lone `Add.hack` would show up in the chip dropdown as a chip with three missing files. File loading accepts `.hack`; `App` parses the files into a separate list of programs (by file name, new loads add to / replace by name).
+- **The ROM program reaches the engine through the circuit instance** (`ChipInstance.program`, read by `init(inst)`), plus `Simulator.loadRom(words)`. This lets `Reset` keep the program with no special case, and a ROM32K block pick its file from the board. `ROM32K load X.hack` in a `.tst` is still stage 3.
+- **`peek` / `poke` exist only on the new memories and `Keyboard`** (not yet on Register, PC, RAM8..RAM16K): nothing uses them before stage 3, so adding them now would be untested code.
+- **Keyboard and Memory have a "key" number box on the board** (not only the Computer view of stage 4), so the memory map can be tried by hand. It writes `keyValue` into the node data.
+- **`planOrder` / `orderChips` return `PlanStep[]`** (`{ chip, outputs?, deps? }`) instead of `string[]`; `evaluate` takes the same. Only `perf.test.ts` and `runTests.ts` pass it through. No built-in chip uses `deps` yet: the native CPU is stage 2, so the rule is tested with a test-only chip that has the CPU's dependencies (`outM` on `inM`/`instruction`; `pc`, `addressM` on nothing).
+- **More than 32768 `.hack` instructions is an error** (as designed); invalid lines are skipped with a warning naming the line, and the warning says later instructions move up by one address.
+- **Not done in this stage (still open in the plan):** the "tick and tock evaluate once each" cheap fix, and the lazy snapshot replay.

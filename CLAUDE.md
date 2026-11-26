@@ -41,6 +41,21 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
     ARegister / DRegister / DFF / DFF16 / PC have no combinational inputs (loops through their in/load/inc/reset are
     legal, they show a "stored" badge); a RAM's out depends only on `address` (see the engine rules). DFF16 (= 16 DFFs side by side) predates buses and is KEPT because
     the sequential tests build Register/RAM8 from it.
+  - Project 5 – Computer (sidebar section "Project 5 – Computer", definitions in `engine/projectFive.ts`; stage 1 of
+    `docs/ADR-R2-project5.md`, CPU and Computer come later): **ROM32K** (address[15] → out[16], read-only program memory,
+    32768 words), **Screen** (in[16], load, address[13] → out[16], 8192 words), **Keyboard** (out[16], the key code that
+    is held, 0 = none), **Memory** (in[16], load, address[15] → out[16]: RAM16K at 0..16383, Screen at 16384..24575,
+    Keyboard word at 24576 (read-only), 24577..32767 read 0 and ignore writes). Reads are combinational, writes happen at
+    tock, memories are `Uint16Array`s allocated once per instance. **Reset** clears RAM / Screen / Memory (`fill(0)`) but keeps
+    the ROM32K program and the Keyboard key. The ROM32K block has a dropdown of the loaded `.hack` files and shows how many
+    instructions it holds; Keyboard and Memory have a "key" number box (changing it does not restart a running
+    simulation). The chosen file name / key are saved in the node data (`hackFile`, `keyValue`; `storage.ts` keeps them).
+  - **`.hack` files** (`engine/hack.ts` `parseHack`): one 16-character 0/1 instruction per line; blank lines, spaces,
+    a BOM and CRLF are fine; any other line is skipped WITH a warning naming its line number (at most 20 warnings, then
+    "... and N more"); more than 32768 instructions is an error. `.hack` is a 4th accepted extension in file loading,
+    but it is NOT an exercise chip (`groupExerciseFiles` ignores it); App keeps the parsed programs by file name
+    (new loads add to / replace by name) and `flowToCircuit(nodes, edges, programs)` copies the words into
+    `ChipInstance.program`. A chosen file that is not loaded is a warning (empty ROM), not an error.
   - **The chip under test is never offered as a block in its own palette:** if an exercise folder contains a chip named
     like a built-in (Bit, Register, RAM8 ...) and you select it, the built-in with that name is hidden from the
     sidebar (`visibleChipGroups` in `ui/palette.ts`; names are case-sensitive) so you cannot build it out of itself.
@@ -126,6 +141,8 @@ src/
     runTests.ts    # run all .cmp rows against a circuit → results (plans once, evaluate() per row)
     tst.ts         # .tst subset (set/eval/tick/tock/output/repeat/output-list) + compareToCmp
     hdl.ts         # .hdl INTERFACE parser (IN/OUT only)
+    hack.ts        # .hack parser (16-character 0/1 lines → words, warnings with line numbers)
+    projectFive.ts # ROM32K, Screen, Keyboard, Memory (imported by chips.ts; only types are imported back, no cycle)
     bus.ts         # Split / Join / Const: busDef (pins+eval from params), parseRanges, busErrors (validation)
     resolve.ts     # chipOf(instance): CHIPS entry or a bus node built from its params
     exercise.ts    # groupExerciseFiles (Name.hdl/.tst/.cmp → chips) and runExercise (.tst + .cmp)
@@ -157,6 +174,18 @@ tests/         # end-to-end tests; fixtures/buses/ = 3 INVENTED chips (hdl/tst/c
 - Sequential chips are `ChipDef.seq` (`SeqBehavior`: init/read/tick/tock/stored). State is per chip INSTANCE and lives
   in the `Simulator`, never in the chip definition. tick latches inputs, tock commits them (Nand2Tetris model);
   RAM writes happen at tock, reads are combinational.
+- **Per-output dependencies** (`SeqBehavior.deps`, optional): `deps: { outM: ['inM', 'instruction'], pc: [] }` says which
+  inputs each OUTPUT of a clocked chip depends on right now; an output missing from the map uses `combInputs`, so every
+  existing chip is unchanged. `orderChips` plans STEPS (`PlanStep = { chip, outputs?, deps? }`, returned by
+  `planOrder` / `orderChips` and consumed by `evaluate`): a clocked chip becomes one step per distinct dependency set, a
+  wire from output `o` orders the step that produces `o` before every step of the target chip that depends on the
+  target pin. `read(inp, state)` of such a chip gets ONLY the inputs of one group and must compute each output from its
+  own deps. Result: ROM.out → CPU.instruction → CPU.pc/addressM → ROM.address is a legal fetch loop when `pc` has no
+  deps, but a loop through an output that DOES depend on the input (`outM` → address) is still a cycle error.
+  No built-in chip uses `deps` yet (the built-in CPU / Computer come in stage 2); it is covered by a test-only chip.
+- Clocked chips can implement optional hooks: `init(inst)` (gets the circuit instance: ROM32K `program`, Keyboard `key`),
+  `reset(state)` (keep program / key, clear memories in place; without it the state is recreated), `loadRom`, `setKey`,
+  `peek` / `poke`. `Simulator` exposes `loadRom(words)`, `setKeyboard(key, chipId?)`, `peek(chipId, i)`, `poke(...)`.
 - A wire connects one source pin to one target pin of the same width; mismatched width → error shown to user.
 - Unconnected input pin → error listing which pin.
 - Everything that needs a chip's pins calls `chipOf(instance)` (resolve.ts), never `CHIPS[...]` directly, so

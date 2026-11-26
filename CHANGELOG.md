@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Project 5, stage 1: memory system (see `docs/ADR-R2-project5.md`)
+- **New built-in chips** in a "Project 5 – Computer" sidebar section: **ROM32K** (program memory), **Screen**
+  (8K words), **Keyboard** and **Memory** (RAM16K at 0..16383, Screen at 16384..24575, Keyboard at 24576).
+  Reads are combinational, writes happen at tock; **Reset** clears RAM and Screen but keeps the loaded program
+  and the key.
+- **`.hack` files:** a parser (16-character 0/1 lines; blank lines and CRLF are fine; an invalid line is skipped
+  with a warning that names its line number; more than 32768 instructions is an error) and `.hack` as a fourth
+  accepted extension in Load folder / Load files / drag and drop. The ROM32K block has a dropdown of the loaded
+  programs and shows the number of instructions; Keyboard and Memory have a key-code box.
+- **Per-output dependencies in the planner** (`SeqBehavior.deps`): a clocked chip's outputs can depend on
+  different inputs, so a fetch loop like ROM32K → CPU → ROM32K.address is not a false cycle, while a real
+  combinational loop still is. Existing chips are unchanged.
+- Saved boards now keep the chosen `.hack` file name and the key code.
+- Tests: 229 → 273 (parser, every new chip, Memory address map, dependency rules, a hand-written 8-instruction
+  program read through ROM32K, node data → circuit). The `stops runaway scripts` test got a 30 s timeout: it
+  runs a million clock cycles and failed on a loaded machine with the default 5 s.
+
 ### Live demo on GitHub Pages
 - **Website:** every push to `main` runs the tests, builds the app and publishes it with
   `.github/workflows/pages.yml` (actions pinned to full SHAs, least-privilege permissions).
