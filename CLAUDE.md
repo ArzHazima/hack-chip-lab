@@ -5,7 +5,7 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
 ## Product (MVP)
 - Layout (top to bottom): **top bar** = app name (left), the SELECTED CHIP as a large dropdown in the center with its
   CMP / TST / HDL file names under it (⚠ for a missing file; on a free board it shows the uploaded files), and the
-  **? Help** button (right). **Toolbar** with three labelled groups: **Files** (Load folder, Load files, Upload .cmp,
+  **? Help** button (right). **Toolbar** with three labelled groups: **Files** (Load folder, Load files, Load example chips, Upload .cmp,
   Upload .tst), **Run** (▶ Run, Tick, Tock, Step, Reset, Clock counter), **View** (Show expected, Binary / Decimal /
   Hex / All switch, Delete selected). Below: left **sidebar** (collapsible sections: From your folder, Pins, Wiring,
   Project 1–3), the **board** in the middle, and the **results table** under it (title "Test results: N / M passed",
@@ -101,6 +101,12 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
   uses the manually uploaded .cmp exactly as before.
 - The app is GENERIC: it must never hardcode chip or exercise names. Any folder of Name.hdl/.tst/.cmp must work.
 - Later stages (do NOT build unless asked): saving a user circuit as a reusable chip, `.hdl` export, 3D view.
+
+- **Live demo / examples:** the app is deployed to GitHub Pages by `.github/workflows/pages.yml` (base path from
+  `VITE_BASE`, default `/`). **Load example chips** fetches `public/examples/index.json` + the listed files
+  (`fetchExampleFiles` in `fileLoading.ts`, URLs built from `import.meta.env.BASE_URL`) and feeds them to
+  `onLoadFiles` like a picked folder. Keep `public/examples/` in sync with the invented fixtures; list new files in
+  its `index.json`.
 
 ## Tech stack
 - Vite + React + TypeScript (strict)

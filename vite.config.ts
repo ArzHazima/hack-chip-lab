@@ -1,5 +1,5 @@
 /// <reference types="vitest/config" />
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // Content-Security-Policy for the PRODUCTION build only (apply: 'build'). The dev server needs inline
@@ -18,7 +18,10 @@ function cspPlugin(): Plugin {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  // Base URL of the site. '/' for `npm run dev` and a normal build; the GitHub Pages workflow sets
+  // VITE_BASE=/<repo name>/ because the site lives under https://<user>.github.io/<repo name>/.
+  base: loadEnv(mode, '.', 'VITE_').VITE_BASE ?? '/', // loadEnv also sees real environment variables
   plugins: [react(), cspPlugin()],
   test: { environment: 'node', include: ['src/**/*.test.ts', 'tests/**/*.test.ts'] },
-})
+}))

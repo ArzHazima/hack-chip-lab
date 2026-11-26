@@ -34,6 +34,7 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 interface Props {
   // Files
   onLoadFiles: (files: File[]) => void
+  onLoadExamples: () => void // loads the bundled example chips (no folder needed)
   uploadWhyNot: string | null // why Upload .cmp / .tst are unavailable (a chip is selected), or null
   onUploadCmp: (file: File) => void
   onUploadTst: (file: File) => void
@@ -85,6 +86,9 @@ export default function Toolbar(p: Props) {
         </Btn>
         <Btn whyNot={null} title="Pick several .hdl / .tst / .cmp files" onClick={() => filesRef.current?.click()}>
           Load files
+        </Btn>
+        <Btn whyNot={null} title="Load a few ready-made example chips (Mirror16, Pick4of16, Wide16And, WriteOnceRAM8) - no files needed" onClick={p.onLoadExamples}>
+          Load example chips
         </Btn>
         <Btn whyNot={p.uploadWhyNot} title="Upload a .cmp file with the expected results (free board only)" onClick={() => cmpRef.current?.click()}>
           Upload .cmp

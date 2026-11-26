@@ -72,3 +72,31 @@ export async function filesFromDrop(dt: DataTransfer): Promise<File[]> {
 }
 
 export const hasFiles = (dt: DataTransfer | null): boolean => !!dt && Array.from(dt.types).includes('Files')
+
+// --- bundled example chips -------------------------------------------------
+// Friends opening the live site have no exercise files, so a few invented chips ship with the app in
+// public/examples/ (+ an index.json listing the file names). They are fetched and turned into
+// ordinary `File` objects, so they go through readExerciseFiles → groupExerciseFiles exactly like a
+// folder the user picked: nothing in the engine knows about them.
+
+/**
+ * Downloads the bundled example files. `baseUrl` is Vite's BASE_URL ('/' locally, '/<repo>/' on
+ * GitHub Pages), so the URLs also work under a sub-path. `fetchFn` is a parameter so tests can run it
+ * without a server.
+ */
+export async function fetchExampleFiles(baseUrl: string, fetchFn: typeof fetch = fetch): Promise<File[]> {
+  const dir = `${baseUrl}examples/`
+  const indexRes = await fetchFn(`${dir}index.json`)
+  if (!indexRes.ok) throw new Error(`examples/index.json: HTTP ${indexRes.status}`)
+  const index = (await indexRes.json()) as { files?: unknown }
+  if (!Array.isArray(index.files) || !index.files.every((n) => typeof n === 'string' && /^[\w.-]+$/.test(n))) {
+    throw new Error('examples/index.json has an unexpected format')
+  }
+  return Promise.all(
+    (index.files as string[]).map(async (name) => {
+      const res = await fetchFn(`${dir}${name}`)
+      if (!res.ok) throw new Error(`examples/${name}: HTTP ${res.status}`)
+      return new File([await res.text()], name)
+    }),
+  )
+}

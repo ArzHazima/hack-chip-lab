@@ -1,5 +1,7 @@
 # Hack Chip Lab
 
+**Live demo: https://arzhazima.github.io/hack-chip-lab/**
+
 A web app for **building Nand2Tetris chips visually**: drag built-in chips onto a canvas, wire them
 together, and check the result against the exercise's own `.tst` / `.cmp` files, with a ✅ / ❌ for every row.
 Everything runs in your browser; nothing is uploaded anywhere.
@@ -7,6 +9,16 @@ Everything runs in your browser; nothing is uploaded anywhere.
 ![Hack Chip Lab: the Pick4of16 chip selected, built from three Mux16 chips and two bit-range handles on the sel pin, binary values on the pins and all 5 test rows passing](docs/screenshot.png)
 
 _Pick4of16 (choose one of four 16-bit inputs) built from three Mux16 chips. The two bits of `sel` come from range handles on the pin itself, with no Split node. Binary / decimal / hex values are shown on the pins, and 5 / 5 test rows passed._
+
+## Try it in 30 seconds
+
+1. Open the [live demo](https://arzhazima.github.io/hack-chip-lab/).
+2. Click **Load example chips** (no files needed).
+3. Pick **WriteOnceRAM8** or **Pick4of16** from the big chip name at the top.
+4. Wire it: drag chips from the left and connect them to the pins.
+5. Press **Run**.
+
+The examples are invented chips bundled in `public/examples/`; they load through the same code as a real folder.
 
 ## Quick start
 

@@ -1,0 +1,8 @@
+// Invented test fixture: reverses the order of the 16 bits (bit 0 becomes bit 15, ...).
+CHIP Mirror16 {
+    IN in[16];
+    OUT out[16];
+
+    PARTS:
+    // out[15] = in[0], out[14] = in[1], ... (just wires; no gates)
+}

@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 const STEPS: { title: string; text: string }[] = [
   {
     title: 'Load a folder',
-    text: 'Click “Load folder” and choose a folder that holds your exercises: for every chip a Name.hdl, a Name.tst and a Name.cmp file. You can also drop the folder on the page.',
+    text: 'Click “Load folder” and choose a folder that holds your exercises: for every chip a Name.hdl, a Name.tst and a Name.cmp file. You can also drop the folder on the page. No files at hand? Click “Load example chips” to try the app with ready-made ones.',
   },
   {
     title: 'Pick a chip',

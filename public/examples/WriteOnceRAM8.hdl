@@ -1,0 +1,11 @@
+// Invented test fixture: an 8-word memory where each word can be written only ONCE.
+// A second write to the same address is ignored. `valid` = 1 when the write is accepted.
+CHIP WriteOnceRAM8 {
+    IN in[16], load, address[3];
+    OUT out[16], valid;
+
+    PARTS:
+    // flags (RAM8): flags.out[0] says "this address was written before".
+    // valid = load AND NOT written, and valid also drives flags.load and data.load:
+    // a feedback loop through RAM8 that real hardware allows (load is only sampled at the clock).
+}

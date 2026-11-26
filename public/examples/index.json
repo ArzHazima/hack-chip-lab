@@ -1,0 +1,16 @@
+{
+  "files": [
+    "Mirror16.cmp",
+    "Mirror16.hdl",
+    "Mirror16.tst",
+    "Pick4of16.cmp",
+    "Pick4of16.hdl",
+    "Pick4of16.tst",
+    "Wide16And.cmp",
+    "Wide16And.hdl",
+    "Wide16And.tst",
+    "WriteOnceRAM8.cmp",
+    "WriteOnceRAM8.hdl",
+    "WriteOnceRAM8.tst"
+  ]
+}

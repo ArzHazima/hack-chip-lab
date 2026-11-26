@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Live demo on GitHub Pages
+- **Website:** every push to `main` runs the tests, builds the app and publishes it with
+  `.github/workflows/pages.yml` (actions pinned to full SHAs, least-privilege permissions).
+  The base path comes from `VITE_BASE`, set by the workflow to `/<repo name>/`; local `npm run dev` and
+  `npm run build` still use `/`.
+- **Load example chips** (Files group): loads four bundled invented chips (Mirror16, Pick4of16, Wide16And,
+  WriteOnceRAM8, each with .hdl/.tst/.cmp from `public/examples/`) without picking a folder. They are
+  fetched as ordinary files and go through the same loader as a folder; the engine is unchanged.
+- The production Content-Security-Policy was checked under a sub-path with `vite preview`: no violations.
+- `.gitignore`: `examples/` now only ignores the root folder, so `public/examples/` is tracked.
+
 ## v0.5 — 2026-11-25
 
 First tagged release. The repository is private.

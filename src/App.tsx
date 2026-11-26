@@ -26,7 +26,7 @@ import HelpPanel from './ui/HelpPanel'
 import { FORMAT_MODES, valueText, type FormatMode } from './ui/formatValue'
 import { maxIdNumber, pinsFromInterface, reconcilePins } from './ui/exercisePins'
 import { ErrorBoundary } from './ui/ErrorBoundary'
-import { filesFromDrop, hasFiles, readExerciseFiles } from './ui/fileLoading'
+import { fetchExampleFiles, filesFromDrop, hasFiles, readExerciseFiles } from './ui/fileLoading'
 import { edgeWidth, flowToCircuit, inputValues } from './ui/flowToCircuit'
 import { addRanges as addRangesTo, compileRanges, rangeHandleId, removeRange as removeRangeFrom, type BitRange } from './ui/ranges'
 import { fromExercise, fromTestRun } from './ui/runView'
@@ -257,6 +257,15 @@ export default function App() {
       if (activeName) switchTo(list.some((c) => c.name === activeName) ? activeName : null, list)
     } catch (e) {
       setErrors([`Could not read the files: ${(e as Error).message}`])
+    }
+  }
+
+  /** "Load example chips": fetch the bundled files, then use the very same path as a picked folder. */
+  const onLoadExamples = async () => {
+    try {
+      await onLoadFiles(await fetchExampleFiles(import.meta.env.BASE_URL))
+    } catch (e) {
+      setErrors([`Could not load the example chips: ${(e as Error).message}`])
     }
   }
 
@@ -521,6 +530,7 @@ export default function App() {
       />
       <Toolbar
         onLoadFiles={onLoadFiles}
+        onLoadExamples={onLoadExamples}
         uploadWhyNot={uploadWhyNot}
         onUploadCmp={onUploadCmp}
         onUploadTst={onUploadTst}
