@@ -2,7 +2,8 @@
 
 import type { ExerciseFile } from '../engine/exercise'
 
-const WANTED = /\.(hdl|tst|cmp)$/i
+// .hack = a machine-language program for a ROM32K block (not part of an exercise chip's files).
+const WANTED = /\.(hdl|tst|cmp|hack)$/i
 
 /** Limits against a huge or hostile folder: one big file or thousands of files would freeze the tab. */
 export const MAX_FILE_BYTES = 5 * 1024 * 1024 // 5 MB; real .hdl/.tst/.cmp files are a few KB
@@ -22,7 +23,7 @@ export async function readExerciseFiles(files: File[]): Promise<ReadResult> {
   const warnings: string[] = []
   let wanted = files.filter((f) => WANTED.test(f.name))
   if (wanted.length > MAX_FILES) {
-    warnings.push(`Too many files: ${wanted.length} .hdl/.tst/.cmp files were picked; only the first ${MAX_FILES.toLocaleString('en-US')} were loaded.`)
+    warnings.push(`Too many files: ${wanted.length} .hdl/.tst/.cmp/.hack files were picked; only the first ${MAX_FILES.toLocaleString('en-US')} were loaded.`)
     wanted = wanted.slice(0, MAX_FILES)
   }
   const small = wanted.filter((f) => {

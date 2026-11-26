@@ -10,6 +10,7 @@ import {
 } from '@xyflow/react'
 import { CmpParseError, cmpTextTable, parseCmp, type CmpFile } from './engine/cmp'
 import { groupExerciseFiles, runExercise, type ExerciseChip } from './engine/exercise'
+import { parseHack } from './engine/hack'
 import { HdlParseError, parseHdlInterface } from './engine/hdl'
 import { runTests } from './engine/runTests'
 import { Simulator } from './engine/sequential'
@@ -61,6 +62,9 @@ export default function App() {
   // it is null for a clocked .cmp (time column), which only works together with an uploaded .tst.
   const [manualCmp, setManualCmp] = useState<{ name: string; text: string; parsed: CmpFile | null; parseError: string | null } | null>(null)
   const [manualTst, setManualTst] = useState<{ name: string; text: string } | null>(null)
+
+  // Loaded .hack programs by file name (instruction words). New loads add to / replace by name; ROM32K blocks pick one.
+  const [hackPrograms, setHackPrograms] = useState<ReadonlyMap<string, readonly number[]>>(() => new Map())
 
   // Number format of pin values and wire labels (toolbar switch), remembered between visits.
   const [format, setFormat] = useState<FormatMode>(() => {
@@ -152,9 +156,29 @@ export default function App() {
     },
     [setNodes, setEdges, structuralChange],
   )
+  // ---- Project 5 blocks: the ROM32K program picker and the Keyboard key ----
+  const setHackFile = useCallback(
+    (nodeId: string, name: string) => {
+      setNodes((ns) =>
+        ns.map((n) => (n.id === nodeId && n.type === 'chip' ? { ...n, data: { ...n.data, hackFile: name || undefined } } : n)),
+      )
+      structuralChange() // a new program means a new machine: back to time 0
+    },
+    [setNodes, structuralChange],
+  )
+  const setKeyValue = useCallback(
+    (nodeId: string, key: number) => {
+      setNodes((ns) => ns.map((n) => (n.id === nodeId && n.type === 'chip' ? { ...n, data: { ...n.data, keyValue: key } } : n)))
+      // Pressing a key must not restart a running machine: tell the live simulation directly.
+      simRef.current?.setKeyboard(key, nodeId)
+      setClockTick((n) => n + 1)
+    },
+    [setNodes],
+  )
+  const hackFiles = useMemo(() => [...hackPrograms].map(([name, words]) => ({ name, words: words.length })), [hackPrograms])
   const boardContext = useMemo(
-    () => ({ setInputValue, format, addRanges, removeRange }),
-    [setInputValue, format, addRanges, removeRange],
+    () => ({ setInputValue, format, addRanges, removeRange, hackFiles, setHackFile, setKeyValue }),
+    [setInputValue, format, addRanges, removeRange, hackFiles, setHackFile, setKeyValue],
   )
 
   // ---- Deleting the selection (nodes and wires) ----
@@ -244,17 +268,37 @@ export default function App() {
   const onLoadFiles = async (files: File[]) => {
     try {
       const read = await readExerciseFiles(files)
-      const list = groupExerciseFiles(read.files)
-      if (list.length === 0) {
-        setErrors(['No .hdl, .tst or .cmp files were found in what you picked.'])
+      const list = groupExerciseFiles(read.files) // .hack files are not exercise chips: they are handled below
+      // .hack programs: parsed here, a bad line is a warning with its line number, a too long file an error.
+      const programs = new Map(hackPrograms)
+      const hackWarnings: string[] = []
+      const hackErrors: string[] = []
+      let hackSeen = 0
+      for (const f of read.files) {
+        const base = f.name.split(/[\\/]/).pop() ?? f.name
+        if (!/\.hack$/i.test(base)) continue
+        hackSeen++
+        try {
+          const parsed = parseHack(f.text)
+          programs.set(base, parsed.words)
+          hackWarnings.push(...parsed.warnings.map((w) => `${base}: ${w}`))
+        } catch (e) {
+          hackErrors.push(`${base}: ${(e as Error).message}`)
+        }
+      }
+      if (list.length === 0 && hackSeen === 0) {
+        setErrors(['No .hdl, .tst, .cmp or .hack files were found in what you picked.'])
         setWarnings(read.warnings)
         return
       }
-      setExercises(list)
-      setErrors([])
-      setWarnings(read.warnings) // skipped files (too big / too many), if any
+      if (hackSeen > 0) setHackPrograms(programs)
+      // Programs changed: a running machine still holds the old ROM, so start it again.
+      if (hackSeen > 0) structuralChange()
+      if (list.length > 0) setExercises(list)
+      setErrors(hackErrors)
+      setWarnings([...read.warnings, ...hackWarnings]) // skipped files (too big / too many) and bad .hack lines, if any
       // Keep the active chip if it is still there (its files may have changed), else go back to manual.
-      if (activeName) switchTo(list.some((c) => c.name === activeName) ? activeName : null, list)
+      if (list.length > 0 && activeName) switchTo(list.some((c) => c.name === activeName) ? activeName : null, list)
     } catch (e) {
       setErrors([`Could not read the files: ${(e as Error).message}`])
     }
@@ -280,7 +324,7 @@ export default function App() {
   /** Builds the Simulator the first time the clock is used (reports circuit errors). */
   const ensureSim = (): Simulator | null => {
     if (simRef.current) return simRef.current
-    const { circuit, errors: pinErrors } = flowToCircuit(nodes, edges)
+    const { circuit, errors: pinErrors, warnings: circuitWarnings } = flowToCircuit(nodes, edges, hackPrograms)
     if (pinErrors.length) {
       setErrors(pinErrors)
       return null
@@ -288,6 +332,7 @@ export default function App() {
     try {
       simRef.current = new Simulator(circuit)
       setErrors([])
+      setWarnings(circuitWarnings) // e.g. a ROM32K whose .hack file is not loaded
       return simRef.current
     } catch (e) {
       showError(e)
@@ -360,7 +405,8 @@ export default function App() {
   const onRun = () => {
     clearRun()
     setWarnings([])
-    const { circuit, errors: pinErrors } = flowToCircuit(nodes, edges)
+    const { circuit, errors: pinErrors, warnings: circuitWarnings } = flowToCircuit(nodes, edges, hackPrograms)
+    setWarnings(circuitWarnings)
     const needsTst = [
       'This circuit contains clocked chips (DFF, RAM, PC ...). Run needs a .tst script to clock it ' +
         '(or use Tick / Tock / Step by hand).',
@@ -373,7 +419,7 @@ export default function App() {
         if (active.tst) {
           const result = runExercise(circuit, active.tst.text, active.cmp.text)
           setErrors([])
-          setWarnings(result.warnings.map((w) => `${active.tst!.name}: ${w}`))
+          setWarnings([...circuitWarnings, ...result.warnings.map((w) => `${active.tst!.name}: ${w}`)])
           return setRun(fromExercise(result))
         }
         // No .tst: treat the .cmp as a plain combinational table.
@@ -389,7 +435,7 @@ export default function App() {
       if (manualTst) {
         const result = runExercise(circuit, manualTst.text, manualCmp.text)
         setErrors([])
-        setWarnings(result.warnings.map((w) => `${manualTst.name}: ${w}`))
+        setWarnings([...circuitWarnings, ...result.warnings.map((w) => `${manualTst.name}: ${w}`)])
         return setRun(fromExercise(result))
       }
       const table = manualCmp.parsed
@@ -449,14 +495,24 @@ export default function App() {
         const issues = issuesByNode.get(n.id)
         if (n.type === 'chip') {
           const stored = view?.stored?.[n.id]
-          if (stored === undefined && !issues) return n
-          return { ...n, data: { ...n.data, ...(stored !== undefined ? { stored } : {}), ...(issues ? { issues } : {}) } }
+          // ROM32K shows how many instructions its chosen .hack file holds.
+          const romWords = n.data.hackFile ? hackPrograms.get(n.data.hackFile)?.length : undefined
+          if (stored === undefined && !issues && romWords === undefined) return n
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              ...(stored !== undefined ? { stored } : {}),
+              ...(issues ? { issues } : {}),
+              ...(romWords !== undefined ? { romWords } : {}),
+            },
+          }
         }
         // Input pins show a value badge only for a result row; live inputs are typed into the pin box.
         const value = n.type === 'inpin' ? view?.rowInputs?.[n.data.name] : view?.outputs[n.data.name]
         return { ...n, data: { ...n.data, value, ...(issues ? { issues } : {}) } } as AppNode
       }),
-    [nodes, view, issuesByNode],
+    [nodes, view, issuesByNode, hackPrograms],
   )
   const shownEdges = useMemo<Edge[]>(
     () =>

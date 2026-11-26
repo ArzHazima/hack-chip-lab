@@ -3,7 +3,7 @@
 
 import type { Edge } from '@xyflow/react'
 import { defOfData, paramsOf } from './busParams'
-import type { Circuit, Endpoint } from '../engine/circuit'
+import type { ChipInstance, Circuit, Endpoint } from '../engine/circuit'
 import { compileRanges, rangeHandleId, rangeWidth } from './ranges'
 import type { AppNode, PinRange } from './types'
 
@@ -12,20 +12,36 @@ function endpoint(node: AppNode, handle: string): Endpoint {
   return node.type === 'chip' ? { chip: node.id, pin: handle } : { pin: node.id }
 }
 
-export function flowToCircuit(rawNodes: AppNode[], rawEdges: Edge[]): { circuit: Circuit; errors: string[] } {
+/**
+ * `programs` = the loaded .hack files by file name (words per instruction). A node with `hackFile` (ROM32K) gets its
+ * program from there; a file that is not loaded is only a WARNING (the ROM stays empty), not an error.
+ */
+export function flowToCircuit(
+  rawNodes: AppNode[],
+  rawEdges: Edge[],
+  programs?: ReadonlyMap<string, readonly number[]>,
+): { circuit: Circuit; errors: string[]; warnings: string[] } {
   const circuit: Circuit = { pins: [], chips: [], wires: [] }
   // Bit ranges on pins are compiled to the Split / Join nodes the engine already knows (see ranges.ts).
   const compiled = compileRanges(rawNodes, rawEdges)
   const nodes = compiled.nodes
   const edges = compiled.edges
   const errors: string[] = [...compiled.errors]
+  const warnings: string[] = []
   const names = new Set<string>()
 
   for (const n of nodes) {
     if (n.type === 'chip') {
       const { params, error } = paramsOf(n.data)
       if (error) errors.push(`${n.data.type} ${n.id}: ${error}`)
-      circuit.chips.push(params ? { id: n.id, type: n.data.type, params } : { id: n.id, type: n.data.type })
+      const inst: ChipInstance = params ? { id: n.id, type: n.data.type, params } : { id: n.id, type: n.data.type }
+      if (n.data.hackFile) {
+        const program = programs?.get(n.data.hackFile)
+        if (program) inst.program = program
+        else warnings.push(`${n.data.type} ${n.id}: ${n.data.hackFile} is not loaded (use Load folder / Load files), so the ROM is empty`)
+      }
+      if (n.data.keyValue) inst.key = n.data.keyValue
+      circuit.chips.push(inst)
     } else {
       const name = n.data.name.trim()
       if (!name) errors.push('A pin has an empty name')
@@ -51,7 +67,7 @@ export function flowToCircuit(rawNodes: AppNode[], rawEdges: Edge[]): { circuit:
       to: endpoint(dst, e.targetHandle ?? ''),
     })
   }
-  return { circuit, errors }
+  return { circuit, errors, warnings }
 }
 
 /** Bit width carried by an edge (taken from its source pin, or its range), for the wire label. */

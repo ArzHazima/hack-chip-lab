@@ -108,6 +108,9 @@ function cleanNode(n: unknown): AppNode | null {
       if (p.ones !== undefined) data.params.ones = p.ones
     }
     if (ranges) data.ranges = ranges
+    // ROM32K's chosen .hack file and the Keyboard key. A bad value is simply left out (the node stays usable).
+    if (isStr(d.hackFile) && d.hackFile !== '') data.hackFile = d.hackFile
+    if (Number.isInteger(d.keyValue) && (d.keyValue as number) >= 0 && (d.keyValue as number) <= 65535) data.keyValue = d.keyValue as number
     return { id: n.id, type: 'chip', position, data }
   }
   if (n.type === 'inpin' || n.type === 'outpin') {

@@ -14,7 +14,18 @@ export type PinIssue = { pin: string; message: string }
 
 // stored: live DFF/PC value (display only); params: only for Split / Join / Const;
 // ranges: the range handles of this node's pins (optional, so circuits saved before ranges still load)
-export type ChipData = { type: string; stored?: number; params?: BusParams; ranges?: PinRange[]; issues?: PinIssue[] }
+// hackFile: ROM32K only, the name of the loaded .hack file it reads (saved with the board; the words are looked up
+// when the circuit is built). keyValue: Keyboard / Memory, the key code that is held. romWords: display only.
+export type ChipData = {
+  type: string
+  stored?: number
+  params?: BusParams
+  ranges?: PinRange[]
+  issues?: PinIssue[]
+  hackFile?: string
+  keyValue?: number
+  romWords?: number
+}
 export type PinData = {
   name: string
   width: number

@@ -76,7 +76,7 @@ export default function Toolbar(p: Props) {
     <div className="toolbar">
       {/* Hidden file inputs. webkitdirectory (pick a whole folder) is not in React's types, hence the spread. */}
       <input ref={folderRef} type="file" multiple hidden {...({ webkitdirectory: '' } as object)} onChange={picked(p.onLoadFiles)} />
-      <input ref={filesRef} type="file" multiple hidden accept=".hdl,.tst,.cmp" onChange={picked(p.onLoadFiles)} />
+      <input ref={filesRef} type="file" multiple hidden accept=".hdl,.tst,.cmp,.hack" onChange={picked(p.onLoadFiles)} />
       <input ref={cmpRef} type="file" hidden accept=".cmp,text/plain" onChange={picked(([f]) => p.onUploadCmp(f))} />
       <input ref={tstRef} type="file" hidden accept=".tst,text/plain" onChange={picked(([f]) => p.onUploadTst(f))} />
 
@@ -84,7 +84,7 @@ export default function Toolbar(p: Props) {
         <Btn whyNot={null} title="Pick a folder with Name.hdl / Name.tst / Name.cmp files (you can also drop it on the page)" onClick={() => folderRef.current?.click()}>
           Load folder
         </Btn>
-        <Btn whyNot={null} title="Pick several .hdl / .tst / .cmp files" onClick={() => filesRef.current?.click()}>
+        <Btn whyNot={null} title="Pick several .hdl / .tst / .cmp / .hack files" onClick={() => filesRef.current?.click()}>
           Load files
         </Btn>
         <Btn whyNot={null} title="Load a few ready-made example chips (Mirror16, Pick4of16, Wide16And, WriteOnceRAM8) - no files needed" onClick={p.onLoadExamples}>

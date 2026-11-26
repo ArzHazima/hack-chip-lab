@@ -118,6 +118,55 @@ function handleStyle(p: { side: string; y: number; x: number }, all: { side: str
   return style as CSSProperties
 }
 
+/**
+ * Small controls inside a few Project 5 blocks: ROM32K picks one of the loaded .hack files (and shows how many
+ * instructions it holds); Keyboard and Memory have a box for the key code that is held (0 = no key).
+ * `nodrag` keeps clicking and typing from dragging the node.
+ */
+function ChipControls({ id, data }: { id: string; data: ChipNodeT['data'] }) {
+  const { hackFiles, setHackFile, setKeyValue } = useContext(BoardContext)
+  if (data.type === 'ROM32K') {
+    const chosen = data.hackFile ?? ''
+    const missing = chosen !== '' && !hackFiles.some((f) => f.name === chosen)
+    return (
+      <div className="chip-extra nodrag">
+        <label>
+          program
+          <select value={chosen} aria-label="Program loaded into ROM32K" onChange={(e) => setHackFile(id, e.target.value)}>
+            <option value="">{hackFiles.length === 0 ? '(no .hack file loaded)' : '(empty)'}</option>
+            {missing && <option value={chosen}>{chosen} (not loaded)</option>}
+            {hackFiles.map((f) => (
+              <option key={f.name} value={f.name}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="chip-extra-note">{data.romWords === undefined ? '0' : data.romWords} instructions</span>
+      </div>
+    )
+  }
+  if (data.type === 'Keyboard' || data.type === 'Memory') {
+    return (
+      <div className="chip-extra nodrag">
+        <label>
+          key
+          <input
+            className="pin-input"
+            type="number"
+            min={0}
+            max={65535}
+            value={data.keyValue ?? 0}
+            aria-label="Key code that is held (0 = no key)"
+            onChange={(e) => setKeyValue(id, Math.min(65535, Math.max(0, Math.floor(Number(e.target.value)) || 0)))}
+          />
+        </label>
+      </div>
+    )
+  }
+  return null
+}
+
 function ChipNode({ id, data }: NodeProps<ChipNodeT>) {
   const layout = useMemo(() => chipLayout(data.type, data.params), [data.type, data.params])
   const { shape, w, h, pins } = layout
@@ -194,6 +243,7 @@ function ChipNode({ id, data }: NodeProps<ChipNodeT>) {
           />
         ))}
       </div>
+      <ChipControls id={id} data={data} />
       <RangeColumn nodeId={id} side="left" pins={inSections} ranges={data.ranges ?? []} open={open} onToggle={toggle} issues={data.issues ?? []} />
       <RangeColumn nodeId={id} side="right" pins={outSections} ranges={data.ranges ?? []} open={open} onToggle={toggle} issues={data.issues ?? []} />
     </div>
