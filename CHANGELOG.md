@@ -48,6 +48,12 @@ First tagged release. The repository is private.
   "Clear saved circuit" catches the rest), and the production build ships a strict Content-Security-Policy.
 
 ### Fixed before release
+- **Easier wiring:** every connection handle has a larger invisible grab area (33 px wide, up to 27 px tall, instead of the
+  9 px dot; the dot itself is unchanged), a hover highlight, and dropping a wire within 32 px of a handle snaps to the
+  nearest one. The grab areas shrink where handles are only 22 px apart, so neighbouring handles never overlap.
+- **Pins no longer overlap:** pin nodes that grow (selected test row, open bit strip or range column) push the pins below
+  them down. The default gap between pins is larger.
+- **The test results panel has a close button (×).**
 - Feedback loops through RAM / Register / PC inputs are now allowed (for example `RAM8` out → logic → `RAM8` load, or
   `RAM8` out → `Inc16` → `RAM8` in), matching the Nand2Tetris simulator. Dependencies are now declared per input pin.
 

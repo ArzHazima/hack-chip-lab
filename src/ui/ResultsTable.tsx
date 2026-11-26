@@ -4,11 +4,15 @@ interface Props {
   run: RunView
   selected: number | null
   onSelect: (index: number) => void
+  onClose: () => void
 }
 
-export default function ResultsTable({ run, selected, onSelect }: Props) {
+export default function ResultsTable({ run, selected, onSelect, onClose }: Props) {
   return (
     <section className="results">
+      <button type="button" className="results-close" onClick={onClose} aria-label="Close test results" title="Close test results (the circuit is not changed)">
+        ×
+      </button>
       <div className="results-summary">
         <span className="results-title">
           {run.ok ? '✅' : '❌'} Test results: {run.passed} / {run.total} passed

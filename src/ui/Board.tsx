@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type DragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import {
   Background,
   Controls,
@@ -12,6 +12,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { nodeTypes } from './nodes'
+import { stackPins } from './stackPins'
 import { DRAG_MIME, type AppNode, type DragItem } from './types'
 
 interface Props {
@@ -37,6 +38,49 @@ function BoardInner({ nodes, edges, onNodesChange, onEdgesChange, onConnect, onD
   const userMoved = useRef(false)
   const hasNodes = useRef(false)
   hasNodes.current = nodes.length > 0
+  // ---- keep pin nodes from overlapping ----
+  // Pin nodes change height (selected test row, open bit strip / range column). Measure them and let
+  // stackPins push the ones below further down (see stackPins.ts). offsetHeight / offsetTop ignore zoom.
+  const [heights, setHeights] = useState<Record<string, number>>({})
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    let frame = 0
+    const measure = () => {
+      const next: Record<string, number> = {}
+      el.querySelectorAll<HTMLElement>('.react-flow__node-inpin, .react-flow__node-outpin').forEach((node) => {
+        const box = node.firstElementChild as HTMLElement | null
+        if (!box || !node.dataset.id) return
+        const col = box.querySelector<HTMLElement>(':scope > .range-col')
+        next[node.dataset.id] = Math.round(Math.max(box.offsetHeight, col ? box.offsetTop + col.offsetTop + col.offsetHeight : 0))
+      })
+      setHeights((prev) => {
+        const keys = Object.keys(next)
+        return keys.length === Object.keys(prev).length && keys.every((k) => prev[k] === next[k]) ? prev : next
+      })
+    }
+    const schedule = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(measure)
+    }
+    // Content changes (rows, values, strips opening) -> childList / text; size changes -> ResizeObserver.
+    const mutations = new MutationObserver(schedule)
+    mutations.observe(el, { childList: true, subtree: true, characterData: true })
+    const sizes = new ResizeObserver(schedule)
+    const watchSizes = () => el.querySelectorAll('.react-flow__node-inpin, .react-flow__node-outpin, .range-col').forEach((n) => sizes.observe(n))
+    watchSizes()
+    const rewatch = new MutationObserver(watchSizes)
+    rewatch.observe(el, { childList: true, subtree: true })
+    schedule()
+    return () => {
+      cancelAnimationFrame(frame)
+      mutations.disconnect()
+      rewatch.disconnect()
+      sizes.disconnect()
+    }
+  }, [])
+  const stacked = useMemo(() => stackPins(nodes, heights), [nodes, heights])
+
   const fit = useCallback(() => void fitView({ padding: 0.12, maxZoom: 1.25, duration: 0 }), [fitView])
 
   useEffect(() => {
@@ -86,7 +130,7 @@ function BoardInner({ nodes, edges, onNodesChange, onEdgesChange, onConnect, onD
         </div>
       )}
       <ReactFlow
-        nodes={nodes}
+        nodes={stacked}
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
@@ -95,6 +139,7 @@ function BoardInner({ nodes, edges, onNodesChange, onEdgesChange, onConnect, onD
         onDragOver={onDragOver}
         onDrop={onDrop}
         deleteKeyCode={null} // App handles Delete/Backspace itself (see deleteSelected)
+        connectionRadius={32} // dropping a wire within 32 px of a handle snaps to the nearest one (React Flow default: 20)
         defaultEdgeOptions={{ interactionWidth: 20 }} // wide invisible click area around each wire
         // event is null for our own fitView calls and set when the user drags or zooms the view
         onMoveStart={(event) => {

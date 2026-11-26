@@ -4,7 +4,7 @@ import type { Edge } from '@xyflow/react'
 import { assertInterfaceWidths, type HdlInterface, type PinSpec } from '../engine/hdl'
 import type { AppNode } from './types'
 
-const ROW = 120 // vertical gap between pins on the board
+const ROW = 190 // vertical gap between pins on the board (Board.tsx pushes them further apart if they grow)
 const OUT_X = 1000 // outputs go to the right of the inputs
 
 /** Highest number used at the end of a node id (And3 -> 3), so new ids never collide. */

@@ -147,6 +147,12 @@ button.primary:disabled { background: var(--line-soft); border-color: var(--line
 .box-title { position: absolute; top: 4px; left: 0; text-align: center; font-weight: 700; font-size: var(--fs-sm); color: var(--accent); pointer-events: none; }
 .stored { margin-left: 6px; background: var(--ink); color: #fff; border-radius: 4px; padding: 0 5px; font-size: 10px; }
 .react-flow__handle { width: 9px; height: 9px; background: #6b7280; }
+/* Bigger grab area, same visible dot: a transparent ::after around the 9 px dot (it belongs to the handle, so
+   pressing it starts a wire). It reaches 12 px sideways and --hit-v up and down. --hit-v is set per handle from
+   the distance to its neighbours (nodes.tsx) so the areas of neighbouring handles never overlap; default 13.5 px. */
+.react-flow__handle::after { content: ''; position: absolute; left: -12px; right: -12px; top: calc(4.5px - var(--hit-v, 13.5px)); bottom: calc(4.5px - var(--hit-v, 13.5px)); }
+.react-flow__handle:hover { background: var(--accent); box-shadow: 0 0 0 3px rgba(79, 70, 229, .28); }
+.range-row .react-flow__handle { --hit-v: 10px; } /* range rows are about 22 px apart */
 .react-flow__node.selected .sym { stroke: var(--select); }
 .react-flow__node.selected .chip-symbol { filter: drop-shadow(0 0 4px var(--select)); }
 .react-flow__node.selected .board-pin { border-color: var(--select); box-shadow: 0 0 0 3px rgba(245, 158, 11, .35); }
@@ -171,7 +177,7 @@ button.primary:disabled { background: var(--line-soft); border-color: var(--line
 .pin-empty { margin-top: 4px; font-size: var(--fs-xs); color: var(--muted); font-style: italic; }
 
 /* ---------- results (fixed max height, own scroll) and expected panel ---------- */
-.results { flex: 0 0 auto; max-height: var(--results-max-h); display: flex; flex-direction: column; background: var(--panel); border-top: 2px solid var(--line); }
+.results { position: relative; flex: 0 0 auto; max-height: var(--results-max-h); display: flex; flex-direction: column; background: var(--panel); border-top: 2px solid var(--line); }
 .results-summary { padding: var(--gap-2) var(--gap-4); flex: none; }
 .results-title { font-size: var(--fs-lg); font-weight: 700; }
 .results-note { font-size: var(--fs-sm); font-weight: 400; }
@@ -229,3 +235,5 @@ tr.selected td { box-shadow: inset 0 0 0 9999px rgba(79, 70, 229, .15); }
 /* Shown instead of the board if drawing it crashes (see ErrorBoundary.tsx) */
 .error-boundary { flex: 1; padding: var(--gap-4); background: var(--panel); color: var(--ink); }
 .error-boundary h2 { margin: 0 0 var(--gap-2); }
+
+.results-close { position: absolute; top: var(--gap-1); right: var(--gap-3); z-index: 1; padding: 0 8px; font-size: var(--fs-lg); line-height: 22px; }

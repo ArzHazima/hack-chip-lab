@@ -577,7 +577,15 @@ export default function App() {
               />
             </BoardContext.Provider>
           </ErrorBoundary>
-          {run && <ResultsTable run={run} selected={selectedRow} onSelect={setSelectedRow} />}
+          {run && <ResultsTable
+              run={run}
+              selected={selectedRow}
+              onSelect={setSelectedRow}
+              onClose={() => {
+                setRun(null) // only hides the results; the circuit and the loaded files stay as they are
+                setSelectedRow(null)
+              }}
+            />}
         </div>
         {showExpected && expectedTable && <ExpectedPanel table={expectedTable} />}
       </div>

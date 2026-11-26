@@ -99,6 +99,25 @@ function ChipSymbol({ layout }: { layout: ChipLayout }) {
   )
 }
 
+/**
+ * Half of the height of a handle's invisible grab area (see the .react-flow__handle::after rule). Neighbouring
+ * pins on the same side are as close as 22 px, so the area shrinks to stay clear of them (2 px gap between areas).
+ */
+const MAX_HIT_V = 13.5
+function hitHalfHeight(p: { side: string; y: number; x: number }, all: { side: string; y: number; x: number }[]): number {
+  if (p.side === 'bottom') return MAX_HIT_V
+  let gap = Infinity
+  for (const q of all) if (q !== p && q.side === p.side) gap = Math.min(gap, Math.abs(q.y - p.y))
+  return Math.max(4.5, Math.min(MAX_HIT_V, (gap - 2) / 2))
+}
+
+/** Position of a handle plus its grab-area size (a CSS variable, which React's CSSProperties type does not know). */
+function handleStyle(p: { side: string; y: number; x: number }, all: { side: string; y: number; x: number }[]): CSSProperties {
+  const style: Record<string, string | number> = p.side === 'bottom' ? { left: p.x } : { top: p.y }
+  style['--hit-v'] = `${hitHalfHeight(p, all)}px`
+  return style as CSSProperties
+}
+
 function ChipNode({ id, data }: NodeProps<ChipNodeT>) {
   const layout = useMemo(() => chipLayout(data.type, data.params), [data.type, data.params])
   const { shape, w, h, pins } = layout
@@ -171,7 +190,7 @@ function ChipNode({ id, data }: NodeProps<ChipNodeT>) {
             type={p.io === 'in' ? 'target' : 'source'}
             position={p.side === 'left' ? Position.Left : p.side === 'right' ? Position.Right : Position.Bottom}
             // Override the default (centred) position so the handle sits where the layout says.
-            style={p.side === 'bottom' ? { left: p.x } : { top: p.y }}
+            style={handleStyle(p, pins)}
           />
         ))}
       </div>
