@@ -40,6 +40,12 @@ First tagged release. The repository is private.
   same-named chip from a different exercise folder never restores a foreign circuit.
 - **Project setup:** MIT license, GitHub Actions CI (type check, tests, build) and a test suite of 195 tests.
 
+### Security & robustness
+- Adversarial inputs are bounded: `.tst` loops (empty bodies and nested repeats included, 5,000,000 iterations,
+  100 levels of nesting, 100,000 output rows), `.hdl` and `.tst` parsing is linear, files over 5 MB and more than
+  2,000 files are skipped with a visible warning, saved circuits are validated on load (an error screen with
+  "Clear saved circuit" catches the rest), and the production build ships a strict Content-Security-Policy.
+
 ### Known limitations
 - No CPU, Memory or Computer: no ROM, screen or keyboard, and `.hack` programs cannot be loaded.
 - A `.tst` cannot read or set internal chip state (`RAM16K[0]`, `PC[]`).
