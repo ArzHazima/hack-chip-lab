@@ -38,8 +38,8 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
     **Bit** (in, load → out), **Register**, **ARegister**, **DRegister** (in[16], load → out[16]; the three behave
     identically), **PC**, **RAM8** (address[3]), **RAM64** (address[6]), **RAM512** (address[9]), **RAM4K**
     (address[12]), **RAM16K** (address[14]); RAMs take in[16], load, address and give out[16]. Bit / Register /
-    ARegister / DRegister / DFF / DFF16 / PC are *registered* (loops through them are legal, they show a "stored"
-    badge); the RAMs are not (see the engine rules). DFF16 (= 16 DFFs side by side) predates buses and is KEPT because
+    ARegister / DRegister / DFF / DFF16 / PC have no combinational inputs (loops through their in/load/inc/reset are
+    legal, they show a "stored" badge); a RAM's out depends only on `address` (see the engine rules). DFF16 (= 16 DFFs side by side) predates buses and is KEPT because
     the sequential tests build Register/RAM8 from it.
   - **The chip under test is never offered as a block in its own palette:** if an exercise folder contains a chip named
     like a built-in (Bit, Register, RAM8 ...) and you select it, the built-in with that name is hidden from the
@@ -140,12 +140,14 @@ tests/         # end-to-end tests; fixtures/buses/ = 3 INVENTED chips (hdl/tst/c
 
 ## Engine rules
 - Signals are numbers; a pin has a width (1 or 16, sometimes 2/3 for `sel`). Mask values to width.
-- Evaluate in topological order; a cycle → clear error, not a hang. The one exception: a feedback loop is legal if it
-  passes through a *registered* chip (DFF, DFF16, Bit, Register, ARegister, DRegister, PC: output comes only from
-  stored state, `seq.registered`). RAM (RAM8 … RAM16K) is not registered (reading is combinational on `address`), so a
-  loop through only RAM is still an error. That is a KNOWN false cycle (e.g. RAM8 out → Inc16 → RAM8 in is rejected
-  although real hardware allows it, because `in`/`load` are only sampled at the tick); planned fix: per-input
-  combinational dependencies (gate R2).
+- Evaluate in topological order; a cycle → clear error, not a hang. Dependencies are PER INPUT PIN: each clocked chip
+  declares `seq.combInputs`, the inputs that change its output right now. DFF, DFF16, Bit, Register, ARegister,
+  DRegister, PC: `[]` (out comes only from stored state; in/load/inc/reset are sampled at the tick). RAM8 … RAM16K:
+  `['address']` (out = memory[address]; in/load are sampled at the tick). A wire into a clocked chip's non-comb input
+  creates no ordering edge, so a loop through it is legal (RAM8 out → logic → RAM8 load works, as in the Nand2Tetris
+  simulator); a loop through a combinational path (gates only, or RAM out → RAM address) is still a cycle error.
+  `evaluate` computes a clocked chip's out from its state (+ comb inputs) in order, and reads its other inputs
+  (`chipInputs`, latched at tick) only after everything has settled.
 - Sequential chips are `ChipDef.seq` (`SeqBehavior`: init/read/tick/tock/stored). State is per chip INSTANCE and lives
   in the `Simulator`, never in the chip definition. tick latches inputs, tock commits them (Nand2Tetris model);
   RAM writes happen at tock, reads are combinational.

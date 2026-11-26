@@ -116,10 +116,11 @@ export const hasSequential = (c: Circuit): boolean => c.chips.some((x) => chipOf
 /**
  * Validates the circuit and returns the order in which its chips must be evaluated.
  *
- * Ordering is a topological sort (Kahn's algorithm). A wire u → v means "u before v",
- * EXCEPT when u is a *registered* chip (DFF, PC): its output comes from stored state,
- * not from this cycle's inputs, so it can be computed first. That is exactly what makes
- * a feedback loop legal if (and only if) it passes through such a chip.
+ * Ordering is a topological sort (Kahn's algorithm). A wire u → v.pin means "u before v", EXCEPT when v is a
+ * clocked chip and `pin` is not one of its `combInputs`: such an input is only sampled at the clock tick,
+ * so it does not affect any output now. That is exactly what makes a feedback loop legal if (and only if)
+ * it enters a clocked chip through one of those inputs (DFF/Register/PC in, load ...; RAM in, load).
+ * A loop through RAM.address (RAM.out depends on it immediately) is still a cycle.
  */
 export function planOrder(c: Circuit): string[] {
   const errors = validateCircuit(c)
@@ -130,15 +131,21 @@ export function planOrder(c: Circuit): string[] {
 /**
  * The ordering step of planOrder, for callers that have ALREADY validated the circuit
  * (runTests validates once, together with the .cmp columns, then plans once).
- * Throws CircuitError on a feedback loop that does not pass through a DFF/PC.
+ * Throws CircuitError on a feedback loop that is purely combinational.
  */
 export function orderChips(c: Circuit): string[] {
-  const registered = new Map(c.chips.map((x) => [x.id, !!chipOf(x)?.seq?.registered]))
+  // For each clocked chip: the input pins that DO matter right now (all others break the dependency).
+  const comb = new Map<string, readonly string[]>()
+  for (const x of c.chips) {
+    const seq = chipOf(x)?.seq
+    if (seq) comb.set(x.id, seq.combInputs)
+  }
   const indegree = new Map<string, number>(c.chips.map((x) => [x.id, 0]))
   const downstream = new Map<string, string[]>()
   for (const w of c.wires) {
     if (!isChipEndpoint(w.from) || !isChipEndpoint(w.to)) continue
-    if (registered.get(w.from.chip)) continue // breaks the dependency
+    const live = comb.get(w.to.chip)
+    if (live && !live.includes(w.to.pin)) continue // sampled at the tick only: breaks the dependency
     indegree.set(w.to.chip, (indegree.get(w.to.chip) ?? 0) + 1)
     downstream.set(w.from.chip, [...(downstream.get(w.from.chip) ?? []), w.to.chip])
   }
@@ -156,7 +163,8 @@ export function orderChips(c: Circuit): string[] {
     const stuck = c.chips.filter((x) => !order.includes(x.id)).map((x) => x.id)
     throw new CircuitError([
       `Cycle detected (feedback loop) involving: ${stuck.join(', ')}. ` +
-        'A loop is only allowed if it passes through a DFF (or PC).',
+        'A loop is only allowed if it enters a clocked chip (DFF, Bit, Register, PC, RAM) through an input that is ' +
+        'only sampled at the clock (in, load, inc, reset), not through a RAM address.',
     ])
   }
   return order
@@ -179,26 +187,33 @@ export function evaluate(
     values.set(`#${pin.id}`, mask(v, pin.width))
   }
 
-  // Registered chips: outputs are known before anything else is computed.
-  for (const inst of c.chips) {
-    const def = chipOf(inst)!
-    if (!def.seq?.registered) continue
-    const out = def.seq.read({}, stateOf(states, inst))
-    for (const p of def.outputs) values.set(`${inst.id}.${p.name}`, mask(out[p.name], p.width))
-  }
-
   const wireInto = new Map(c.wires.map((w) => [key(w.to), w]))
   const instOf = new Map(c.chips.map((x) => [x.id, x]))
   const chipInputs: Record<string, Record<string, number>> = {}
+  const clocked: string[] = [] // sequential chips: their sampled inputs are read after everything settled
   for (const id of order) {
     const inst = instOf.get(id)!
     const def = chipOf(inst)!
     const inp: Record<string, number> = {}
-    for (const p of def.inputs) inp[p.name] = values.get(key(wireInto.get(`${id}.${p.name}`)!.from))!
+    if (def.seq) {
+      // Only the combinational inputs (RAM address) are ready now; in / load may still depend on this
+      // very chip's output further down the loop. They are read below, once all values are known.
+      for (const name of def.seq.combInputs) inp[name] = values.get(key(wireInto.get(`${id}.${name}`)!.from))!
+      const out = def.seq.read(inp, stateOf(states, inst))
+      for (const p of def.outputs) values.set(`${id}.${p.name}`, mask(out[p.name], p.width))
+      clocked.push(id)
+    } else {
+      for (const p of def.inputs) inp[p.name] = values.get(key(wireInto.get(`${id}.${p.name}`)!.from))!
+      chipInputs[id] = inp
+      const out = def.eval(inp)
+      for (const p of def.outputs) values.set(`${id}.${p.name}`, mask(out[p.name], p.width))
+    }
+  }
+  // Everything has settled: what each clocked chip sees on ALL of its inputs (the Simulator latches this at tick).
+  for (const id of clocked) {
+    const inp: Record<string, number> = {}
+    for (const p of chipOf(instOf.get(id)!)!.inputs) inp[p.name] = values.get(key(wireInto.get(`${id}.${p.name}`)!.from))!
     chipInputs[id] = inp
-    if (def.seq?.registered) continue // outputs already set
-    const out = def.seq ? def.seq.read(inp, stateOf(states, inst)) : def.eval(inp)
-    for (const p of def.outputs) values.set(`${id}.${p.name}`, mask(out[p.name], p.width))
   }
 
   const outputs: Record<string, number> = {}

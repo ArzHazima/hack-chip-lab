@@ -79,8 +79,6 @@ files is ignored by git on purpose.
 - **Sequential support is basic:** DFF, Bit, Register, ARegister, DRegister, PC and the RAM chips work with
   Tick / Tock / Step and `tick` / `tock` / `ticktock` in `.tst` scripts, but a `.tst` cannot read or set a chip's
   internal state (`RAM16K[0]`, `PC[]`).
-- **A feedback loop through only a RAM chip is rejected** as a cycle (e.g. `RAM8` out → `Inc16` → `RAM8` in),
-  although real hardware allows it. Loops through DFF, Bit, Register and PC are fine.
 - **No reusable chips:** you cannot save your own circuit and use it as a chip inside another one.
 - **Only the `.hdl` interface is read**, never its implementation.
 - **Only a subset of `.tst`** is supported (`set`, `eval`, `tick`, `tock`, `ticktock`, `output`, `output-list`,

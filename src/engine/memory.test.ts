@@ -153,8 +153,9 @@ describe('RAM8', () => {
     expect(seq.read({ address: 5 }, state).out).toBe(0)
   })
 
-  it('is not "registered" (it reads the address combinationally), like the bigger RAM chips', () => {
-    expect(CHIPS.RAM8.seq!.registered).toBe(false)
-    for (const t of ['Bit', 'Register', 'ARegister', 'DRegister']) expect(CHIPS[t].seq!.registered, t).toBe(true)
+  it('out depends combinationally only on address; in and load are sampled at the tick', () => {
+    // (This replaced the old boolean "registered" flag: a RAM is not registered, but only its address matters now.)
+    expect(CHIPS.RAM8.seq!.combInputs).toEqual(['address'])
+    for (const t of ['Bit', 'Register', 'ARegister', 'DRegister', 'DFF', 'PC']) expect(CHIPS[t].seq!.combInputs, t).toEqual([])
   })
 })

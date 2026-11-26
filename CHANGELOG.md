@@ -21,8 +21,9 @@ First tagged release. The repository is private.
   and "to bytes" create many handles at once, and `×` removes a handle together with its wires. Errors are shown
   on the pin and in the Run error: width mismatch, overlapping bits when driving a pin, bits not driven, a whole
   pin mixed with ranges, a range outside the pin. Ranges are saved with the circuit.
-- **Combinational and sequential chips:** feedback loops are allowed through the registered chips (DFF, DFF16,
-  Bit, Register, ARegister, DRegister, PC); a loop through only RAM is rejected (see limitations).
+- **Combinational and sequential chips:** feedback loops are allowed through the inputs of the clocked chips
+  (DFF, DFF16, Bit, Register, ARegister, DRegister, PC, RAM8 … RAM16K: `in`, `load`, `inc`, `reset`), because those are
+  only sampled at the clock tick. Only a combinational loop (gates only, or RAM out → RAM address) is rejected.
   Tick / Tock / Step / Reset with a clock counter and live stored values.
 - **Values you can read:** a toolbar switch for Binary (grouped by 4 bits), Decimal, Hex or All on pins and on
   wire labels; input pins have clickable bit buttons next to the decimal box.
@@ -46,6 +47,10 @@ First tagged release. The repository is private.
   2,000 files are skipped with a visible warning, saved circuits are validated on load (an error screen with
   "Clear saved circuit" catches the rest), and the production build ships a strict Content-Security-Policy.
 
+### Fixed before release
+- Feedback loops through RAM / Register / PC inputs are now allowed (for example `RAM8` out → logic → `RAM8` load, or
+  `RAM8` out → `Inc16` → `RAM8` in), matching the Nand2Tetris simulator. Dependencies are now declared per input pin.
+
 ### Known limitations
 - No CPU, Memory or Computer: no ROM, screen or keyboard, and `.hack` programs cannot be loaded.
 - A `.tst` cannot read or set internal chip state (`RAM16K[0]`, `PC[]`).
@@ -53,7 +58,5 @@ First tagged release. The repository is private.
 - Only a subset of the `.tst` language; only the `.hdl` interface is parsed.
 - Every pin and bus is at most 16 bits wide.
 - Bit ranges cannot be edited: to change one, delete it (`×`) and add a new one. Split / Join settings likewise.
-- A feedback loop through only a RAM chip (for example `RAM8` out → `Inc16` → `RAM8` in) is rejected as a cycle,
-  although real hardware allows it; planned fix.
 - Not optimized for very large circuits or very long result tables.
 - Tested only in a Chromium-based browser.

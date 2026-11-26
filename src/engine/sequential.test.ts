@@ -192,13 +192,15 @@ describe('feedback loops', () => {
     c = connect(c, { pin: 'x' }, { chip: 'mux', pin: 'sel' })
     c = connect(c, { chip: 'mux', pin: 'out' }, { pin: 'out' })
     expect(() => new Simulator(c)).toThrow(CircuitError)
-    expect(() => new Simulator(c)).toThrow(/Cycle detected.*mux.*DFF/)
+    expect(() => new Simulator(c)).toThrow(/Cycle detected.*mux/)
     expect(() => simulate(c, { x: 0 })).toThrow(/Cycle detected/)
   })
 
-  it('a loop through a RAM (which is not a registered chip) is an error too', () => {
-    // ram.out -> Inc16 -> ram.in. RAM output depends combinationally on its inputs'
-    // address, so the engine conservatively treats this as a loop with no DFF.
+  it('a loop through the in input of a RAM is allowed (RAM out depends only on address)', () => {
+    // CORRECTED SEMANTICS. This test used to expect an error for ram.out -> Inc16 -> ram.in, because the
+    // engine treated every RAM input as combinational. In the Nand2Tetris simulator (and real hardware) a
+    // RAM's in / load are only sampled at the clock tick; out = memory[address]. Only a loop through
+    // ram.address is a real cycle (see tests/feedback.test.ts).
     let c = emptyCircuit()
     c = addPin(c, 'addr', 'addr', 'input', 6)
     c = addPin(c, 'w', 'w', 'input')
@@ -209,8 +211,11 @@ describe('feedback loops', () => {
     c = connect(c, { pin: 'w' }, { chip: 'ram', pin: 'load' })
     c = connect(c, { chip: 'ram', pin: 'out' }, { chip: 'inc', pin: 'in' })
     c = connect(c, { chip: 'inc', pin: 'out' }, { chip: 'ram', pin: 'in' })
-    c = connect(c, { chip: 'inc', pin: 'out' }, { pin: 'out' })
-    expect(() => new Simulator(c)).toThrow(/Cycle detected.*ram.*inc/)
+    c = connect(c, { chip: 'ram', pin: 'out' }, { pin: 'out' })
+    const sim = new Simulator(c)
+    for (let i = 0; i < 3; i++) sim.step({ addr: 9, w: 1 }) // memory[9] counts 1, 2, 3
+    expect(sim.eval({ addr: 9, w: 0 }).outputs.out).toBe(3)
+    expect(sim.eval({ addr: 10, w: 0 }).outputs.out).toBe(0)
   })
 
   it('a loop through a DFF is allowed and toggles every cycle', () => {

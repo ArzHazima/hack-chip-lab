@@ -16,9 +16,14 @@ export interface PinDef {
  *   tock: the latched values become the stored state, so outputs change now.
  */
 export interface SeqBehavior {
-  /** True if the outputs depend only on the stored state, never on the present inputs
-   *  (DFF, PC). This is what lets a feedback loop through such a chip be legal. */
-  registered: boolean
+  /**
+   * Which INPUT pins change an output right now (combinationally). Every other input is only sampled at
+   * the clock tick, so a wire into it creates no dependency and a feedback loop through it is legal
+   * (this is how the Nand2Tetris hardware simulator treats these chips):
+   *   DFF, Bit, Register, PC ...  []           out comes from the stored state only
+   *   RAM8 .. RAM16K              ['address']  out = memory[address]; in and load are sampled at the tick
+   */
+  combInputs: readonly string[]
   init(): unknown
   /** Current outputs, from the stored state (and, for RAM, the address input). */
   read(inp: Record<string, number>, state: unknown): Record<string, number>
@@ -226,7 +231,7 @@ type Reg = { cur: number; next: number }
 /** D flip-flop: out(t+1) = in(t). `width` 16 gives DFF16 (16 DFFs side by side). */
 function dffChip(name: string, width: number): ChipDef {
   return seqChip(name, [p('in', width)], [p('out', width)], {
-    registered: true,
+    combInputs: [],
     init: (): Reg => ({ cur: 0, next: 0 }),
     read: (_inp, s) => ({ out: (s as Reg).cur }),
     tick: (inp, s) => void ((s as Reg).next = inp.in),
@@ -238,12 +243,12 @@ function dffChip(name: string, width: number): ChipDef {
 /**
  * Bit / Register / ARegister / DRegister (they all behave the same):
  *   out(t+1) = load(t) ? in(t) : out(t)
- * Registered: the output comes from the stored value only, so a feedback loop through one is legal.
+ * Its output comes from the stored value only (no combinational inputs), so a feedback loop through in / load is legal.
  * The stored value is masked to the width (a Register never holds more than 16 bits).
  */
 function loadRegisterChip(name: string, width: number): ChipDef {
   return seqChip(name, [p('in', width), p('load')], [p('out', width)], {
-    registered: true,
+    combInputs: [],
     init: (): Reg => ({ cur: 0, next: 0 }),
     read: (_inp, s) => ({ out: (s as Reg).cur }),
     tick: (inp, s) => {
@@ -264,7 +269,7 @@ function ramChip(name: string, addrBits: number): ChipDef {
     [p('in', W), p('load'), p('address', addrBits)],
     [p('out', W)],
     {
-      registered: false, // out depends on the address input right now
+      combInputs: ['address'], // out = memory[address] right now; in / load only matter at the tick
       init: (): Mem => ({ mem: new Uint16Array(1 << addrBits), pending: null }),
       read: (inp, s) => ({ out: (s as Mem).mem[inp.address] ?? 0 }),
       tick: (inp, s) => void ((s as Mem).pending = inp.load ? [inp.address, inp.in] : null),
@@ -279,7 +284,7 @@ function ramChip(name: string, addrBits: number): ChipDef {
 
 /** Program counter. Priority: reset > load > inc. */
 const pc = seqChip('PC', [p('in', W), p('load'), p('inc'), p('reset')], [p('out', W)], {
-  registered: true,
+  combInputs: [],
   init: (): Reg => ({ cur: 0, next: 0 }),
   read: (_inp, s) => ({ out: (s as Reg).cur }),
   tick: (inp, s) => {
