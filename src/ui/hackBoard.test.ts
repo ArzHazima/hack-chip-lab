@@ -55,6 +55,19 @@ describe('flowToCircuit: ROM32K program and Keyboard key', () => {
     expect(warnings).toEqual([])
   })
 
+  it('a Computer node runs the program of its chosen .hack file (2 + 3 stored in RAM[0]) and takes the key', () => {
+    // @2  D=A  @3  D=D+A  @0  M=D  @6  0;JMP   (the same program as tests/fixtures/hack/AddStore.hack)
+    const add = [2, 0b1110110000010000, 3, 0b1110000010010000, 0, 0b1110001100001000, 6, 0b1110101010000111]
+    const nodes = [inPin('r', 'reset', 1), chip('pc', { type: 'Computer', hackFile: 'Sum.hack', keyValue: 9 })]
+    const { circuit, errors } = flowToCircuit(nodes, [edge('e1', 'r', 'out', 'pc', 'reset')], new Map([['Sum.hack', add]]))
+    expect(errors).toEqual([])
+    expect(circuit.chips[0]).toMatchObject({ type: 'Computer', key: 9 })
+    const sim = new Simulator(circuit)
+    for (let i = 0; i < 6; i++) sim.step({ reset: 0 })
+    expect(sim.peek('pc', 0)).toBe(5)
+    expect(sim.peek('pc', 24576)).toBe(9)
+  })
+
   it('a Keyboard node passes its key code to the chip (0 = nothing set)', () => {
     const nodes = [chip('kb', { type: 'Keyboard', keyValue: 75 }), outPin('o', 'out', 16)]
     const { circuit } = flowToCircuit(nodes, [edge('e1', 'kb', 'out', 'o', 'in')])

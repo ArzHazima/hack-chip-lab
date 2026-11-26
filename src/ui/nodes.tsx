@@ -124,8 +124,8 @@ function handleStyle(p: { side: string; y: number; x: number }, all: { side: str
  * `nodrag` keeps clicking and typing from dragging the node.
  */
 function ChipControls({ id, data }: { id: string; data: ChipNodeT['data'] }) {
-  const { hackFiles, setHackFile, setKeyValue } = useContext(BoardContext)
-  if (data.type === 'ROM32K') {
+  const { hackFiles, setHackFile } = useContext(BoardContext)
+  if (data.type === 'ROM32K' || data.type === 'Computer') {
     const chosen = data.hackFile ?? ''
     const missing = chosen !== '' && !hackFiles.some((f) => f.name === chosen)
     return (
@@ -143,28 +143,37 @@ function ChipControls({ id, data }: { id: string; data: ChipNodeT['data'] }) {
           </select>
         </label>
         <span className="chip-extra-note">{data.romWords === undefined ? '0' : data.romWords} instructions</span>
+        {data.type === 'Computer' && <KeyBox id={id} value={data.keyValue} />}
       </div>
     )
   }
   if (data.type === 'Keyboard' || data.type === 'Memory') {
     return (
       <div className="chip-extra nodrag">
-        <label>
-          key
-          <input
-            className="pin-input"
-            type="number"
-            min={0}
-            max={65535}
-            value={data.keyValue ?? 0}
-            aria-label="Key code that is held (0 = no key)"
-            onChange={(e) => setKeyValue(id, Math.min(65535, Math.max(0, Math.floor(Number(e.target.value)) || 0)))}
-          />
-        </label>
+        <KeyBox id={id} value={data.keyValue} />
       </div>
     )
   }
   return null
+}
+
+/** The key code box shared by Keyboard, Memory and Computer. */
+function KeyBox({ id, value }: { id: string; value: number | undefined }) {
+  const { setKeyValue } = useContext(BoardContext)
+  return (
+    <label>
+      key
+      <input
+        className="pin-input"
+        type="number"
+        min={0}
+        max={65535}
+        value={value ?? 0}
+        aria-label="Key code that is held (0 = no key)"
+        onChange={(e) => setKeyValue(id, Math.min(65535, Math.max(0, Math.floor(Number(e.target.value)) || 0)))}
+      />
+    </label>
+  )
 }
 
 function ChipNode({ id, data }: NodeProps<ChipNodeT>) {
