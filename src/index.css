@@ -225,3 +225,7 @@ tr.selected td { box-shadow: inset 0 0 0 9999px rgba(79, 70, 229, .15); }
 /* width: 0 + min-width: 100% = the message wraps inside the column and never makes it wider, so the
    handles do not jump sideways while you are wiring (the message text changes with every wire). */
 .range-issue { margin-top: 4px; color: var(--bad); font-size: var(--fs-xs); width: 0; min-width: 100%; white-space: normal; line-height: 1.3; }
+
+/* Shown instead of the board if drawing it crashes (see ErrorBoundary.tsx) */
+.error-boundary { flex: 1; padding: var(--gap-4); background: var(--panel); color: var(--ink); }
+.error-boundary h2 { margin: 0 0 var(--gap-2); }

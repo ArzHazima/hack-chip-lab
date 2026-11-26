@@ -4,10 +4,34 @@ import type { ExerciseFile } from '../engine/exercise'
 
 const WANTED = /\.(hdl|tst|cmp)$/i
 
-/** Reads the text of every .hdl / .tst / .cmp file (other files are skipped, never read). */
-export async function readExerciseFiles(files: File[]): Promise<ExerciseFile[]> {
-  const wanted = files.filter((f) => WANTED.test(f.name))
-  return Promise.all(wanted.map(async (f) => ({ name: f.webkitRelativePath || f.name, text: await f.text() })))
+/** Limits against a huge or hostile folder: one big file or thousands of files would freeze the tab. */
+export const MAX_FILE_BYTES = 5 * 1024 * 1024 // 5 MB; real .hdl/.tst/.cmp files are a few KB
+export const MAX_FILES = 2_000
+
+export interface ReadResult {
+  files: ExerciseFile[]
+  warnings: string[] // shown to the user: what was skipped and why
+}
+
+/**
+ * Reads the text of every .hdl / .tst / .cmp file (other files are skipped, never read).
+ * Files over MAX_FILE_BYTES are skipped, and only the first MAX_FILES wanted files are read;
+ * both are reported in `warnings`.
+ */
+export async function readExerciseFiles(files: File[]): Promise<ReadResult> {
+  const warnings: string[] = []
+  let wanted = files.filter((f) => WANTED.test(f.name))
+  if (wanted.length > MAX_FILES) {
+    warnings.push(`Too many files: ${wanted.length} .hdl/.tst/.cmp files were picked; only the first ${MAX_FILES.toLocaleString('en-US')} were loaded.`)
+    wanted = wanted.slice(0, MAX_FILES)
+  }
+  const small = wanted.filter((f) => {
+    if (f.size <= MAX_FILE_BYTES) return true
+    warnings.push(`Skipped ${f.webkitRelativePath || f.name}: ${(f.size / 1024 / 1024).toFixed(1)} MB is over the ${MAX_FILE_BYTES / 1024 / 1024} MB limit per file.`)
+    return false
+  })
+  const read = await Promise.all(small.map(async (f) => ({ name: f.webkitRelativePath || f.name, text: await f.text() })))
+  return { files: read, warnings }
 }
 
 // --- drag & drop -----------------------------------------------------------
@@ -22,7 +46,10 @@ function readBatch(reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]
   return new Promise((resolve, reject) => reader.readEntries(resolve, reject))
 }
 
+const wantedCount = (files: File[]): number => files.filter((f) => WANTED.test(f.name)).length
+
 async function walk(entry: FileSystemEntry, out: File[]): Promise<void> {
+  if (wantedCount(out) > MAX_FILES) return // enough: readExerciseFiles reports the excess
   if (entry.isFile) {
     out.push(await entryFile(entry as FileSystemFileEntry))
   } else if (entry.isDirectory) {

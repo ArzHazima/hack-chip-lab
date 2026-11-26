@@ -25,6 +25,7 @@ import Toolbar from './ui/Toolbar'
 import HelpPanel from './ui/HelpPanel'
 import { FORMAT_MODES, valueText, type FormatMode } from './ui/formatValue'
 import { maxIdNumber, pinsFromInterface, reconcilePins } from './ui/exercisePins'
+import { ErrorBoundary } from './ui/ErrorBoundary'
 import { filesFromDrop, hasFiles, readExerciseFiles } from './ui/fileLoading'
 import { edgeWidth, flowToCircuit, inputValues } from './ui/flowToCircuit'
 import { addRanges as addRangesTo, compileRanges, rangeHandleId, removeRange as removeRangeFrom, type BitRange } from './ui/ranges'
@@ -242,14 +243,16 @@ export default function App() {
 
   const onLoadFiles = async (files: File[]) => {
     try {
-      const list = groupExerciseFiles(await readExerciseFiles(files))
+      const read = await readExerciseFiles(files)
+      const list = groupExerciseFiles(read.files)
       if (list.length === 0) {
         setErrors(['No .hdl, .tst or .cmp files were found in what you picked.'])
+        setWarnings(read.warnings)
         return
       }
       setExercises(list)
       setErrors([])
-      setWarnings([])
+      setWarnings(read.warnings) // skipped files (too big / too many), if any
       // Keep the active chip if it is still there (its files may have changed), else go back to manual.
       if (activeName) switchTo(list.some((c) => c.name === activeName) ? activeName : null, list)
     } catch (e) {
@@ -561,17 +564,19 @@ export default function App() {
       <div className="main">
         <Sidebar chips={exercises} activeName={activeName} onSelectChip={(name) => switchTo(name)} showPins={!active || !autoPins} />
         <div className="center">
-          <BoardContext.Provider value={boardContext}>
-            <Board
-              nodes={shownNodes}
-              edges={shownEdges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onDropItem={onDropItem}
-              fitKey={activeSlot}
-            />
-          </BoardContext.Provider>
+          <ErrorBoundary>
+            <BoardContext.Provider value={boardContext}>
+              <Board
+                nodes={shownNodes}
+                edges={shownEdges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onDropItem={onDropItem}
+                fitKey={activeSlot}
+              />
+            </BoardContext.Provider>
+          </ErrorBoundary>
           {run && <ResultsTable run={run} selected={selectedRow} onSelect={setSelectedRow} />}
         </div>
         {showExpected && expectedTable && <ExpectedPanel table={expectedTable} />}
