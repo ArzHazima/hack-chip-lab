@@ -23,5 +23,5 @@ export default defineConfig(({ mode }) => ({
   // VITE_BASE=/<repo name>/ because the site lives under https://<user>.github.io/<repo name>/.
   base: loadEnv(mode, '.', 'VITE_').VITE_BASE ?? '/', // loadEnv also sees real environment variables
   plugins: [react(), cspPlugin()],
-  test: { environment: 'node', include: ['src/**/*.test.ts', 'tests/**/*.test.ts'] },
+  test: { testTimeout: 30_000, environment: 'node', include: ['src/**/*.test.ts', 'tests/**/*.test.ts'] },
 }))

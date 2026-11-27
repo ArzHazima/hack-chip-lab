@@ -2,7 +2,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import ResultsTable from './ResultsTable'
+import ResultsTable, { windowRange } from './ResultsTable'
 import type { RunView } from './types'
 
 const view = (n: number): RunView => ({
@@ -32,5 +32,19 @@ describe('ResultsTable', () => {
   })
   it('shows the echo text as an info line', () => {
     expect(html(3)).toContain('Select the Screen view')
+  })
+  it('windowRange never gives an empty window, even with a stale scroll position (M1)', () => {
+    // scrollTop measured with 34px rows, now rows are 28px: top / rowH is beyond the last row
+    for (const top of [0, 1_000_000, 2_800_000, 3_395_586, 1e12]) {
+      const { first, last } = windowRange(top, 166, 28, 100_000)
+      expect(last).toBeGreaterThan(first)
+      expect(last).toBeLessThanOrEqual(100_000)
+      expect(first).toBeGreaterThanOrEqual(0)
+    }
+    expect(windowRange(0, 300, 28, 100_000).first).toBe(0)
+    const mid = windowRange(1_400_000, 166, 28, 100_000) // row 50,000 is at the top
+    expect(mid.first).toBe(50_000 - 20)
+    expect(mid.last).toBeGreaterThan(50_000 + 5)
+    expect(windowRange(0, 300, 28, 400)).toEqual({ first: 0, last: 52 })
   })
 })
