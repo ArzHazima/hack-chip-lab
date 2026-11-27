@@ -8,7 +8,7 @@
 //   echo "text"                               (shown as an info line in the results)
 //
 // Supported: set, eval, tick, tock, ticktock, output, repeat N { }, while cond { }, output-list, echo, clear-echo,
-// `ROM32K load File.hack`. `load X.hdl`, output-file and compare-to are accepted and IGNORED WITH A WARNING.
+// `ROM32K load File.hack`. `load X.hdl`, output-file and compare-to are accepted and IGNORED; each gives one grey info line (`Tst.notices`), not a warning.
 // Any other command is skipped and reported in `Tst.warnings`, not an error.
 // Bus indexing of a PIN (set a[0] 1) IS an error, because skipping it would silently give wrong results.
 // Values: 5, -5, %D5, %B101, %X1F.
@@ -64,14 +64,44 @@ export interface Tst {
    *  use the list that was active when they ran (see the 'output-list' command). */
   outputList: OutputCol[]
   commands: TstCommand[]
-  warnings: string[] // e.g. unknown commands that were ignored
+  warnings: string[] // e.g. unknown commands that were ignored (at most MAX_LISTED + one "... and N more" line)
+  /** Commands that are accepted but do nothing here (`load`, `output-file`, `compare-to`). Not a problem: shown as grey info. */
+  notices: string[]
 }
 
 /** Deepest allowed `repeat` nesting; also keeps the recursive parser and runner off the stack limit. */
 const MAX_NESTING = 100
 const COMPARES: readonly string[] = ['=', '<>', '<', '>', '<=', '>=']
-// Commands that are accepted but do nothing here; each one is reported once as a warning (never skipped silently).
-const IGNORED_WARNING: Record<string, string> = {
+// Limits on what a script may ask for (a hostile or broken script must stop quickly, not eat all memory).
+const MAX_LISTED = 50 // warnings / info lines shown; the rest is counted in one "... and N more" line
+const MAX_COL_WIDTH = 64 // left + len + right of one output-list column
+const MAX_COLUMNS = 200 // columns in one output-list
+const MAX_OUTPUT_CHARS = 50_000_000 // characters in all output rows together
+
+/**
+ * A list of distinct messages that keeps only the first MAX_LISTED and counts the rest. A Set makes the
+ * "have I seen this?" test O(1); an array `includes` made 60,000 distinct messages take about a minute.
+ */
+class Listed {
+  private seen = new Set<string>()
+  private first: string[] = []
+  add(msg: string): void {
+    if (this.seen.has(msg)) return
+    this.seen.add(msg)
+    if (this.first.length < MAX_LISTED) this.first.push(msg)
+  }
+  /** The kept messages, plus "... and N more" when some were left out. */
+  toArray(): string[] {
+    const more = this.seen.size - this.first.length
+    return more > 0 ? [...this.first, `... and ${more} more`] : [...this.first]
+  }
+  get last(): string | undefined {
+    return this.first[this.first.length - 1]
+  }
+}
+
+// Commands that are accepted but do nothing here; each one is reported once as a grey info line (never skipped silently).
+const IGNORED_NOTICE: Record<string, string> = {
   load: 'the circuit on the board is used, not the .hdl file',
   'output-file': 'results are shown in the table, no file is written',
   'compare-to': "the chip's own .cmp file is used",
@@ -154,6 +184,10 @@ function parseCol(tok: string): OutputCol {
   const m = tok.match(/^([A-Za-z_]\w*(?:\[\d*\])?)%([BDXS])(\d+)\.(\d+)\.(\d+)$/)
   if (!m) throw new TstParseError(`Bad output-list column "${tok}" (expected e.g. out%B2.1.2)`)
   const ref = parseRef(m[1])
+  const total = +m[3] + +m[4] + +m[5]
+  if (!(total <= MAX_COL_WIDTH)) {
+    throw new TstParseError(`Output-list column "${tok}" is too wide: left + length + right must be at most ${MAX_COL_WIDTH}`)
+  }
   return { ...ref, fmt: m[2] as OutputCol['fmt'], left: +m[3], len: +m[4], right: +m[5] }
 }
 
@@ -163,10 +197,9 @@ export function parseTst(text: string): Tst {
   const toks = tokenize(text)
   let pos = 0
   let outputList: OutputCol[] = []
-  const warnings: string[] = []
-  const warn = (w: string) => {
-    if (!warnings.includes(w)) warnings.push(w)
-  }
+  const warnings = new Listed()
+  const notices = new Listed()
+  const warn = (w: string) => warnings.add(w)
 
   const skipSeparators = () => {
     while (toks[pos] === ',' || toks[pos] === ';') pos++
@@ -212,9 +245,9 @@ export function parseTst(text: string): Tst {
         return cmds
       }
       if (word === '{') throw new TstParseError('Unexpected "{"')
-      if (word in IGNORED_WARNING) {
+      if (word in IGNORED_NOTICE) {
         const a = args()
-        warn(`"${[word, ...a].join(' ')}" was ignored: ${IGNORED_WARNING[word]}`)
+        notices.add(`"${[word, ...a].join(' ')}" was ignored: ${IGNORED_NOTICE[word]}`)
       } else if (word === 'echo') {
         cmds.push({ op: 'echo', text: args().map(unquote).join(' ') })
       } else if (word === 'clear-echo') {
@@ -227,7 +260,9 @@ export function parseTst(text: string): Tst {
         cmds.push({ op: 'rom-load', file })
       } else if (word === 'output-list') {
         // A new output-list REPLACES the previous one (it does not add columns to it).
-        const cols = args().map(parseCol)
+        const a = args()
+        if (a.length > MAX_COLUMNS) throw new TstParseError(`An output-list may have at most ${MAX_COLUMNS} columns (this one has ${a.length})`)
+        const cols = a.map(parseCol)
         outputList = cols
         cmds.push({ op: 'output-list', cols })
       } else if (word === 'set') {
@@ -265,7 +300,7 @@ export function parseTst(text: string): Tst {
   }
 
   const commands = block(false, 0)
-  return { outputList, commands, warnings }
+  return { outputList, commands, warnings: warnings.toArray(), notices: notices.toArray() }
 }
 
 // ---------------------------------------------------------------------------
@@ -282,9 +317,9 @@ export interface Snapshot {
 export interface TstOutput {
   header: string
   rows: string[] // one line per `output`, like "| 0+  |  0  |  0  |  0  |"
-  warnings: string[] // values that did not fit and digits that were cut off (each reported once)
-  info: string[] // the text of `echo` commands, in order, each once
-  /** Set when the script was stopped on purpose (a `while` that never ended). The rows produced so far are kept. */
+  warnings: string[] // values that did not fit and digits that were cut off (each once; capped like Tst.warnings)
+  info: string[] // the text of `echo` commands, in order, each once (capped like Tst.warnings)
+  /** Set when the script was stopped (a `while` that never ended, a limit, or a run-time error). The rows produced so far are kept. */
   stopped?: string
   /** Only with RunOptions.captureRow: the snapshot of that row. */
   captured?: Snapshot
@@ -346,8 +381,9 @@ export function runTst(circuit: Circuit, tst: Tst, opts: RunOptions = {}): TstOu
   const widthOf = new Map(circuit.pins.map((p) => [p.name, p.width]))
   const inputs: Record<string, number> = Object.fromEntries(inPins.map((p) => [p.name, 0]))
   const rows: string[] = []
-  const info: string[] = []
-  const warnings = new Set<string>() // a Set, so a warning inside a long repeat is reported once
+  const info = new Listed()
+  const warnings = new Listed() // distinct messages only, so a warning inside a long repeat is reported once
+  let outChars = 0 // characters in `rows` so far
   let budget = MAX_COMMANDS
   let iterations = MAX_ITERATIONS
   let whileBudget = MAX_WHILE
@@ -471,14 +507,21 @@ export function runTst(circuit: Circuit, tst: Tst, opts: RunOptions = {}): TstOu
         case 'output-list':
           active = cmd.cols
           break
-        case 'output':
+        case 'output': {
           if (rows.length >= MAX_ROWS) {
             throw new CircuitError([`.tst script produced too many output rows (more than ${MAX_ROWS.toLocaleString('en-US')})`])
           }
-          rows.push(row())
+          const text = row()
+          if ((outChars += text.length) > MAX_OUTPUT_CHARS) {
+            throw new CircuitError([
+              `.tst script produced too much output (more than ${(MAX_OUTPUT_CHARS / 1_000_000).toLocaleString('en-US')} million characters)`,
+            ])
+          }
+          rows.push(text)
           break
+        }
         case 'echo':
-          if (!info.includes(cmd.text)) info.push(cmd.text)
+          info.add(cmd.text)
           break
         case 'clear-echo':
           break
@@ -504,7 +547,7 @@ export function runTst(circuit: Circuit, tst: Tst, opts: RunOptions = {}): TstOu
         case 'while':
           while (holds(cmd)) {
             if (--whileBudget < 0) {
-              const last = info.length ? ` The script's last message was: "${info[info.length - 1]}".` : ''
+              const last = info.last !== undefined ? ` The script's last message was: "${info.last}".` : ''
               throw new StopRun(
                 `The script was stopped: "while ${cmd.text}" was still true after ${MAX_WHILE.toLocaleString('en-US')} loops.${last} ` +
                   'If this step waits for a key (the official Memory.tst does), type the key code it waits for ' +
@@ -526,7 +569,12 @@ export function runTst(circuit: Circuit, tst: Tst, opts: RunOptions = {}): TstOu
     if (e === CAPTURED) {
       // replay finished: the snapshot is the whole result
     } else if (e instanceof StopRun) stopped = e.message
-    else throw e
+    else if (e instanceof CircuitError && rows.length > 0) {
+      // A run-time error in the MIDDLE of a script (unknown pin, Type[i] out of range, script too long ...): keep the
+      // rows produced so far and say why it stopped. With no row yet there is nothing to keep, so the error is thrown
+      // as before and the board shows it like any other circuit problem.
+      stopped = `The script was stopped: ${e.errors.join(' ')} The rows produced before this step are kept.`
+    } else throw e
   }
 
   const header = `|${tst.outputList
@@ -537,7 +585,7 @@ export function runTst(circuit: Circuit, tst: Tst, opts: RunOptions = {}): TstOu
       return ' '.repeat(pad >> 1) + label + ' '.repeat(pad - (pad >> 1))
     })
     .join('|')}|`
-  return { header, rows, warnings: [...warnings], info, stopped, captured }
+  return { header, rows, warnings: warnings.toArray(), info: info.toArray(), stopped, captured }
 }
 
 // ---------------------------------------------------------------------------

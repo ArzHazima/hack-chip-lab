@@ -166,12 +166,13 @@ describe('6. echo, clear-echo and the ignored commands', () => {
     expect(out.warnings).toEqual([])
     expect(out.rows).toHaveLength(1)
   })
-  it('the course header (load / output-file / compare-to) warns once each and never fails', () => {
+  it('the course header (load / output-file / compare-to) gives one grey notice each (no warning) and never fails', () => {
     const t = parseTst('load Foo.hdl,\noutput-file Foo.out,\ncompare-to Foo.cmp,\noutput-list in%D1.3.1;\nset in 1, output;')
-    expect(t.warnings).toHaveLength(3)
-    expect(t.warnings[0]).toMatch(/"load Foo\.hdl" was ignored/)
-    expect(t.warnings[1]).toMatch(/"output-file Foo\.out" was ignored/)
-    expect(t.warnings[2]).toMatch(/"compare-to Foo\.cmp" was ignored/)
+    expect(t.warnings).toEqual([])
+    expect(t.notices).toHaveLength(3)
+    expect(t.notices[0]).toMatch(/"load Foo\.hdl" was ignored/)
+    expect(t.notices[1]).toMatch(/"output-file Foo\.out" was ignored/)
+    expect(t.notices[2]).toMatch(/"compare-to Foo\.cmp" was ignored/)
     expect(run(single('Register'), 'load Foo.hdl, output-list in%D1.3.1; set in 1, output;').rows).toHaveLength(1)
   })
   it('an unterminated quote ends at the end of its line instead of eating the script', () => {

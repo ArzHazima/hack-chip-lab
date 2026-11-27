@@ -82,8 +82,12 @@ describe('item 2: .hdl parsing is linear', () => {
 describe('item 5: the number of output rows is capped', () => {
   it('repeat 900000 { output; } stops with a clear message', () => {
     const t = parseTst('output-list out%B1.1.1; repeat 900000 { output; }')
-    const r = timed(() => runTst(toggle(), t))
-    expect(r.error?.message).toMatch(/too many output rows/)
+    let out: ReturnType<typeof runTst> | undefined
+    const r = timed(() => (out = runTst(toggle(), t)))
+    // the run ends with a message and KEEPS the rows produced so far (it no longer throws them away)
+    expect(r.error).toBeUndefined()
+    expect(out?.stopped).toMatch(/too many output rows/)
+    expect(out?.rows).toHaveLength(100_000)
     expect(r.ms).toBeLessThan(3000)
   })
 })

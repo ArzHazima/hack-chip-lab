@@ -114,9 +114,9 @@ describe('end to end: one exercise chip', () => {
 
   it('.tst (%B %D %X, comments, ignored load/compare-to) + .cmp: every row passes', () => {
     const run = runExercise(selectOr16(), TST, CMP)
-    // load / output-file / compare-to are ignored WITH a warning each; there is no other warning
-    expect(run.warnings.filter((w) => !/was ignored: /.test(w))).toEqual([])
-    expect(run.warnings.length).toBeGreaterThan(0)
+    // load / output-file / compare-to are ignored and each says so as a grey info line; a passing script has no warning
+    expect(run.warnings).toEqual([])
+    expect(run.info.filter((w) => /was ignored: /.test(w))).toHaveLength(3)
     expect(run.columns).toEqual(['a', 'b', 'sel', 'out', 'out', 'out'])
     expect(run.rows.filter((r) => !r.pass)).toEqual([])
     expect(run.passed).toBe(4)

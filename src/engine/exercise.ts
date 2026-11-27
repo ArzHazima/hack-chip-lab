@@ -66,8 +66,8 @@ export interface ExerciseRun {
   passed: number
   total: number
   columns: string[] // output-list column names
-  warnings: string[] // e.g. ignored unknown .tst commands
-  info: string[] // `echo` texts of the script
+  warnings: string[] // real problems only, e.g. ignored unknown .tst commands, values cut to fit
+  info: string[] // grey info lines: ignored course-header commands (load / output-file / compare-to) and `echo` texts
   message?: string // e.g. row-count mismatch, or why the script was stopped
   /** Lazy replay: re-runs the script up to row `index` and returns the pin and wire values at that row. */
   replay(index: number): Snapshot | undefined
@@ -94,7 +94,7 @@ export function runExercise(circuit: Circuit, tstText: string, cmpText: string, 
     total: rows.length,
     columns: tst.outputList.map(colLabel),
     warnings: [...tst.warnings, ...out.warnings], // parser warnings first, then run-time ones
-    info: out.info,
+    info: [...tst.notices, ...out.info], // grey lines: ignored course-header commands first, then the script's echo texts
     message: [out.stopped, cmp.message].filter(Boolean).join(' ') || undefined,
     replay: (index) => (index < out.rows.length ? runTst(circuit, tst, { ...opts, captureRow: index }).captured : undefined),
   }

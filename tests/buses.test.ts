@@ -155,7 +155,8 @@ describe('invented chips that use Split / Join / Const', () => {
       const run = builders[chip.name](chip).run(chip)
       expect({ chip: chip.name, passed: run.passed, total: run.total }).toEqual({ chip: chip.name, passed: run.total, total: run.total })
       // the course scripts' load / output-file / compare-to lines are ignored, and each says so (never silently)
-      expect(run.warnings.filter((w) => !/was ignored: /.test(w))).toEqual([])
+      expect(run.warnings).toEqual([])
+      expect(run.info.some((w) => /was ignored: /.test(w))).toBe(true)
     }
   })
 
