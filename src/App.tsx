@@ -27,10 +27,13 @@ import HelpPanel from './ui/HelpPanel'
 import { FORMAT_MODES, valueText, type FormatMode } from './ui/formatValue'
 import { maxIdNumber, pinsFromInterface, reconcilePins } from './ui/exercisePins'
 import { ErrorBoundary } from './ui/ErrorBoundary'
-import { fetchExampleFiles, filesFromDrop, hasFiles, readExerciseFiles } from './ui/fileLoading'
+import { fetchExampleFiles, fetchSolution, fetchSolutionNames, filesFromDrop, hasFiles, readExerciseFiles } from './ui/fileLoading'
+import { withBuildHint, needsBuilding } from './ui/buildHint'
+import { structureKey } from './ui/structureKey'
 import { edgeWidth, flowToCircuit, inputValues } from './ui/flowToCircuit'
 import { addRanges as addRangesTo, compileRanges, rangeHandleId, removeRange as removeRangeFrom, type BitRange } from './ui/ranges'
 import { fromExercise, fromTestRun } from './ui/runView'
+import { ReplayCache, scheduleReplay } from './ui/replayCache'
 import { chipSlot, getPref, loadCircuit, MANUAL_SLOT, saveCircuit, setPref, type SavedCircuit } from './ui/storage'
 import type { AppNode, DragItem, PinIssue, PinRange, RunView } from './ui/types'
 import './index.css'
@@ -265,7 +268,14 @@ export default function App() {
     structuralChange()
   }
 
+  // Example chips that have a bundled solution ("Load solution"). Only set by "Load example chips"; any other load clears it,
+  // so a folder of the user's own chips that happens to share a name never offers someone else's solution.
+  const [solutionNames, setSolutionNames] = useState<string[]>([])
   const onLoadFiles = async (files: File[]) => {
+    setSolutionNames([])
+    await loadFiles(files)
+  }
+  const loadFiles = async (files: File[]) => {
     try {
       const read = await readExerciseFiles(files)
       const list = groupExerciseFiles(read.files) // .hack files are not exercise chips: they are handled below
@@ -307,9 +317,31 @@ export default function App() {
   /** "Load example chips": fetch the bundled files, then use the very same path as a picked folder. */
   const onLoadExamples = async () => {
     try {
-      await onLoadFiles(await fetchExampleFiles(import.meta.env.BASE_URL))
+      await loadFiles(await fetchExampleFiles(import.meta.env.BASE_URL))
+      setSolutionNames(await fetchSolutionNames(import.meta.env.BASE_URL))
     } catch (e) {
       setErrors([`Could not load the example chips: ${(e as Error).message}`])
+    }
+  }
+
+  /** "Load solution": the bundled circuit goes through the same path as a saved one (sanitize + reconcile with the .hdl). */
+  const onLoadSolution = async () => {
+    if (!active?.hdl) return
+    const hasWork = nodes.some((n) => n.type === 'chip')
+    if (hasWork && !window.confirm(`Replace your circuit for ${active.name} with the bundled solution? Your current board will be overwritten.`)) return
+    try {
+      const saved = await fetchSolution(import.meta.env.BASE_URL, active.name)
+      const iface = parseHdlInterface(active.hdl.text)
+      nextId.current = Math.max(nextId.current, maxIdNumber(saved.nodes) + 1)
+      const fixed = reconcilePins(saved.nodes, saved.edges, iface, () => nextId.current++)
+      setNodes(deselect(fixed.nodes))
+      setEdges(deselect(fixed.edges))
+      setAutoPins(true)
+      setErrors([])
+      setWarnings([`This is the bundled solution for ${active.name}, to compare with your own circuit. Press Run to check it.`])
+      structuralChange()
+    } catch (e) {
+      setErrors([`Could not load the solution: ${(e as Error).message}`])
     }
   }
 
@@ -415,7 +447,7 @@ export default function App() {
       if (active) {
         // ---- chip flow: the chip's own .tst and .cmp ----
         if (!active.cmp) return setErrors([`⚠ ${active.name}.cmp is missing, so there is nothing to compare with.`])
-        if (pinErrors.length) return setErrors(pinErrors)
+        if (needsBuilding(nodes, edges) || pinErrors.length) return setErrors(withBuildHint(nodes, edges, pinErrors))
         if (active.tst) {
           const result = runExercise(circuit, active.tst.text, active.cmp.text, { programs: hackPrograms })
           setErrors([])
@@ -431,7 +463,7 @@ export default function App() {
       }
       // ---- free board: a .cmp (and optionally a .tst) uploaded by hand ----
       if (!manualCmp) return setErrors(['Upload a .cmp file first (or load a folder and pick a chip).'])
-      if (pinErrors.length) return setErrors(pinErrors)
+      if (needsBuilding(nodes, edges) || pinErrors.length) return setErrors(withBuildHint(nodes, edges, pinErrors))
       if (manualTst) {
         const result = runExercise(circuit, manualTst.text, manualCmp.text, { programs: hackPrograms })
         setErrors([])
@@ -457,6 +489,9 @@ export default function App() {
 
   // Live clocked view: current outputs, wire values and stored DFF/PC values.
   // eval() never changes state, so it is safe to recompute whenever inputs or the clock change.
+  // M6: while a node is dragged, `nodes` is a new array on every mouse move, but only a position changed. Everything that
+  // depends on the wiring and not on the positions is memoised on this key (see ui/structureKey.ts).
+  const structure = useMemo(() => structureKey(nodes, edges), [nodes, edges])
   const live = useMemo(() => {
     const sim = simRef.current
     if (!sim) return null
@@ -466,16 +501,25 @@ export default function App() {
       return null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, clockTick])
+  }, [structure, clockTick])
 
   // What the board shows: the stored graph, plus colors/values from EITHER the selected
   // result row OR the live clocked simulation. Computed on the fly (useMemo) so the real
   // nodes/edges state stays clean.
-  // A script run keeps no wire values per row: the clicked row is replayed (the script re-runs up to it).
-  const snap = useMemo(
-    () => (run && selectedRow !== null ? (run.rows[selectedRow]?.snap ?? run.replay?.(selectedRow)) : undefined),
-    [run, selectedRow],
-  )
+  // A script run keeps no wire values per row: the clicked row is replayed (the script re-runs up to it). That can be
+  // slow, so it happens in an effect AFTER the page painted a "computing..." note, never during render (M2).
+  // The last result is cached (ReplayCache), so clicking the same row again is instant.
+  const replayCache = useRef(new ReplayCache())
+  const [, setReplayTick] = useState(0) // bumped when a replay finished, to re-render
+  const direct = run && selectedRow !== null ? run.rows[selectedRow]?.snap : undefined
+  const needsReplay = !!run?.replay && selectedRow !== null && !direct
+  const cached = needsReplay ? replayCache.current.get(run!, selectedRow!) : undefined
+  useEffect(() => {
+    if (!needsReplay || !run || selectedRow === null) return
+    return scheduleReplay(replayCache.current, run, selectedRow, () => setReplayTick((n) => n + 1))
+  }, [needsReplay, run, selectedRow])
+  const snap = direct ?? cached?.snap
+  const replaying = needsReplay && !cached
   const view = useMemo(
     () =>
       snap
@@ -492,7 +536,8 @@ export default function App() {
       byNode.set(i.nodeId, [...(byNode.get(i.nodeId) ?? []), { pin: i.pin, message: i.message }])
     }
     return byNode
-  }, [nodes, edges])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structure])
   const shownNodes = useMemo<AppNode[]>(
     () =>
       nodes.map((n) => {
@@ -518,10 +563,16 @@ export default function App() {
       }),
     [nodes, view, issuesByNode, hackPrograms],
   )
+  // Wire widths depend on the pins' widths and ranges, never on where the nodes are: not recomputed while dragging.
+  const widths = useMemo(
+    () => edges.map((e) => edgeWidth(nodes, e)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [structure],
+  )
   const shownEdges = useMemo<Edge[]>(
     () =>
-      edges.map((e) => {
-        const width = edgeWidth(nodes, e)
+      edges.map((e, i) => {
+        const width = widths[i]
         const thickness = (width > 1 ? 4 : 2) + (e.selected ? 1.5 : 0) // 16-bit buses are drawn thicker
         // Selected wires get an amber glow (our inline stroke would hide React Flow's own highlight).
         const glow = e.selected ? { filter: 'drop-shadow(0 0 3px #f59e0b)' } : {}
@@ -538,7 +589,7 @@ export default function App() {
           labelStyle: { fontWeight: 700, fill: v ? GREEN : '#555' },
         }
       }),
-    [edges, nodes, view, format],
+    [edges, widths, view, format],
   )
 
   // The expected table: the active chip's .cmp (any format), or the manually uploaded one.
@@ -563,6 +614,13 @@ export default function App() {
     : manualCmp
       ? null
       : 'load a folder and pick a chip, or upload a .cmp file first.'
+  const solutionWhyNot = !active
+    ? 'pick one of the example chips first (Load example chips, then choose a chip at the top).'
+    : !solutionNames.includes(active.name)
+      ? `there is no bundled solution for ${active.name}. Solutions exist only for the example chips.`
+      : !active.hdl
+        ? `${active.name}.hdl is missing.`
+        : null
   const clockWhyNot = nodes.length > 0 ? null : 'the board is empty. Add pins or gates first.'
   const resetWhyNot = live ? null : 'nothing to reset yet. Press Tick, Tock or Step first.'
   const expectedWhyNot = expectedTable ? null : 'no .cmp loaded yet. Pick a chip or upload a .cmp file.'
@@ -591,6 +649,8 @@ export default function App() {
       <Toolbar
         onLoadFiles={onLoadFiles}
         onLoadExamples={onLoadExamples}
+        solutionWhyNot={solutionWhyNot}
+        onLoadSolution={onLoadSolution}
         uploadWhyNot={uploadWhyNot}
         onUploadCmp={onUploadCmp}
         onUploadTst={onUploadTst}
@@ -650,6 +710,7 @@ export default function App() {
           {run && <ResultsTable
               run={run}
               selected={selectedRow}
+              busy={replaying}
               onSelect={setSelectedRow}
               onClose={() => {
                 setRun(null) // only hides the results; the circuit and the loaded files stay as they are
