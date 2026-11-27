@@ -12,5 +12,9 @@
     "WriteOnceRAM8.cmp",
     "WriteOnceRAM8.hdl",
     "WriteOnceRAM8.tst"
+  ],
+  "solutions": [
+    "Mirror16",
+    "Pick4of16"
   ]
 }

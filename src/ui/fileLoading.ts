@@ -1,6 +1,7 @@
 // Getting files from the browser into the app: folder picker, multi-file picker, drag & drop.
 
 import type { ExerciseFile } from '../engine/exercise'
+import { sanitizeCircuit, type SavedCircuit } from './storage'
 
 // .hack = a machine-language program for a ROM32K block (not part of an exercise chip's files).
 const WANTED = /\.(hdl|tst|cmp|hack)$/i
@@ -100,4 +101,32 @@ export async function fetchExampleFiles(baseUrl: string, fetchFn: typeof fetch =
       return new File([await res.text()], name)
     }),
   )
+}
+
+// ---- Example solutions ----
+// public/examples/solutions/<Chip>.json holds a prebuilt, correct circuit (the same JSON shape as a circuit saved in
+// localStorage). index.json lists the chips that have one in "solutions". They are only fetched when the user presses
+// "Load solution", and they go through `sanitizeCircuit` like any saved circuit.
+
+/** Names of the example chips that have a bundled solution. A missing / odd index just means "none". */
+export async function fetchSolutionNames(baseUrl: string, fetchFn: typeof fetch = fetch): Promise<string[]> {
+  try {
+    const res = await fetchFn(`${baseUrl}examples/index.json`)
+    if (!res.ok) return []
+    const index = (await res.json()) as { solutions?: unknown }
+    if (!Array.isArray(index.solutions)) return []
+    return index.solutions.filter((n): n is string => typeof n === 'string' && /^[\w-]+$/.test(n))
+  } catch {
+    return []
+  }
+}
+
+/** Downloads one bundled solution as a circuit. Throws a readable error when it cannot be fetched or is not a circuit. */
+export async function fetchSolution(baseUrl: string, name: string, fetchFn: typeof fetch = fetch): Promise<SavedCircuit> {
+  if (!/^[\w-]+$/.test(name)) throw new Error(`"${name}" is not a valid solution name`)
+  const res = await fetchFn(`${baseUrl}examples/solutions/${name}.json`)
+  if (!res.ok) throw new Error(`examples/solutions/${name}.json: HTTP ${res.status}`)
+  const circuit = sanitizeCircuit(await res.json())
+  if (!circuit || circuit.nodes.length === 0) throw new Error(`examples/solutions/${name}.json is not a circuit`)
+  return circuit
 }

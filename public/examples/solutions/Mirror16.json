@@ -1,0 +1,184 @@
+{
+  "nodes": [
+    {
+      "id": "inpin1",
+      "type": "inpin",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {
+        "name": "in",
+        "width": 16
+      }
+    },
+    {
+      "id": "Split2",
+      "type": "chip",
+      "position": {
+        "x": 300,
+        "y": 0
+      },
+      "data": {
+        "type": "Split",
+        "params": {
+          "width": 16
+        }
+      }
+    },
+    {
+      "id": "Join3",
+      "type": "chip",
+      "position": {
+        "x": 600,
+        "y": 0
+      },
+      "data": {
+        "type": "Join",
+        "params": {
+          "width": 16
+        }
+      }
+    },
+    {
+      "id": "outpin4",
+      "type": "outpin",
+      "position": {
+        "x": 1000,
+        "y": 0
+      },
+      "data": {
+        "name": "out",
+        "width": 16
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-in",
+      "source": "inpin1",
+      "sourceHandle": "out",
+      "target": "Split2",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-out",
+      "source": "Join3",
+      "sourceHandle": "out",
+      "target": "outpin4",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-bit0",
+      "source": "Split2",
+      "sourceHandle": "[0]",
+      "target": "Join3",
+      "targetHandle": "[15]"
+    },
+    {
+      "id": "e-bit1",
+      "source": "Split2",
+      "sourceHandle": "[1]",
+      "target": "Join3",
+      "targetHandle": "[14]"
+    },
+    {
+      "id": "e-bit2",
+      "source": "Split2",
+      "sourceHandle": "[2]",
+      "target": "Join3",
+      "targetHandle": "[13]"
+    },
+    {
+      "id": "e-bit3",
+      "source": "Split2",
+      "sourceHandle": "[3]",
+      "target": "Join3",
+      "targetHandle": "[12]"
+    },
+    {
+      "id": "e-bit4",
+      "source": "Split2",
+      "sourceHandle": "[4]",
+      "target": "Join3",
+      "targetHandle": "[11]"
+    },
+    {
+      "id": "e-bit5",
+      "source": "Split2",
+      "sourceHandle": "[5]",
+      "target": "Join3",
+      "targetHandle": "[10]"
+    },
+    {
+      "id": "e-bit6",
+      "source": "Split2",
+      "sourceHandle": "[6]",
+      "target": "Join3",
+      "targetHandle": "[9]"
+    },
+    {
+      "id": "e-bit7",
+      "source": "Split2",
+      "sourceHandle": "[7]",
+      "target": "Join3",
+      "targetHandle": "[8]"
+    },
+    {
+      "id": "e-bit8",
+      "source": "Split2",
+      "sourceHandle": "[8]",
+      "target": "Join3",
+      "targetHandle": "[7]"
+    },
+    {
+      "id": "e-bit9",
+      "source": "Split2",
+      "sourceHandle": "[9]",
+      "target": "Join3",
+      "targetHandle": "[6]"
+    },
+    {
+      "id": "e-bit10",
+      "source": "Split2",
+      "sourceHandle": "[10]",
+      "target": "Join3",
+      "targetHandle": "[5]"
+    },
+    {
+      "id": "e-bit11",
+      "source": "Split2",
+      "sourceHandle": "[11]",
+      "target": "Join3",
+      "targetHandle": "[4]"
+    },
+    {
+      "id": "e-bit12",
+      "source": "Split2",
+      "sourceHandle": "[12]",
+      "target": "Join3",
+      "targetHandle": "[3]"
+    },
+    {
+      "id": "e-bit13",
+      "source": "Split2",
+      "sourceHandle": "[13]",
+      "target": "Join3",
+      "targetHandle": "[2]"
+    },
+    {
+      "id": "e-bit14",
+      "source": "Split2",
+      "sourceHandle": "[14]",
+      "target": "Join3",
+      "targetHandle": "[1]"
+    },
+    {
+      "id": "e-bit15",
+      "source": "Split2",
+      "sourceHandle": "[15]",
+      "target": "Join3",
+      "targetHandle": "[0]"
+    }
+  ]
+}

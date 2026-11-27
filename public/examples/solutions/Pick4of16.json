@@ -1,0 +1,193 @@
+{
+  "nodes": [
+    {
+      "id": "inpin1",
+      "type": "inpin",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {
+        "name": "a",
+        "width": 16
+      }
+    },
+    {
+      "id": "inpin2",
+      "type": "inpin",
+      "position": {
+        "x": 0,
+        "y": 190
+      },
+      "data": {
+        "name": "b",
+        "width": 16
+      }
+    },
+    {
+      "id": "inpin3",
+      "type": "inpin",
+      "position": {
+        "x": 0,
+        "y": 380
+      },
+      "data": {
+        "name": "c",
+        "width": 16
+      }
+    },
+    {
+      "id": "inpin4",
+      "type": "inpin",
+      "position": {
+        "x": 0,
+        "y": 570
+      },
+      "data": {
+        "name": "d",
+        "width": 16
+      }
+    },
+    {
+      "id": "inpin5",
+      "type": "inpin",
+      "position": {
+        "x": 0,
+        "y": 760
+      },
+      "data": {
+        "name": "sel",
+        "width": 2,
+        "ranges": [
+          {
+            "pin": "out",
+            "lo": 0,
+            "hi": 0
+          },
+          {
+            "pin": "out",
+            "lo": 1,
+            "hi": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "outpin6",
+      "type": "outpin",
+      "position": {
+        "x": 1000,
+        "y": 300
+      },
+      "data": {
+        "name": "out",
+        "width": 16
+      }
+    },
+    {
+      "id": "Mux16_7",
+      "type": "chip",
+      "position": {
+        "x": 350,
+        "y": 0
+      },
+      "data": {
+        "type": "Mux16"
+      }
+    },
+    {
+      "id": "Mux16_8",
+      "type": "chip",
+      "position": {
+        "x": 350,
+        "y": 380
+      },
+      "data": {
+        "type": "Mux16"
+      }
+    },
+    {
+      "id": "Mux16_9",
+      "type": "chip",
+      "position": {
+        "x": 700,
+        "y": 200
+      },
+      "data": {
+        "type": "Mux16"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "inpin1",
+      "sourceHandle": "out",
+      "target": "Mux16_7",
+      "targetHandle": "a"
+    },
+    {
+      "id": "e2",
+      "source": "inpin2",
+      "sourceHandle": "out",
+      "target": "Mux16_7",
+      "targetHandle": "b"
+    },
+    {
+      "id": "e3",
+      "source": "inpin3",
+      "sourceHandle": "out",
+      "target": "Mux16_8",
+      "targetHandle": "a"
+    },
+    {
+      "id": "e4",
+      "source": "inpin4",
+      "sourceHandle": "out",
+      "target": "Mux16_8",
+      "targetHandle": "b"
+    },
+    {
+      "id": "e5",
+      "source": "inpin5",
+      "sourceHandle": "out[0]",
+      "target": "Mux16_7",
+      "targetHandle": "sel"
+    },
+    {
+      "id": "e6",
+      "source": "inpin5",
+      "sourceHandle": "out[0]",
+      "target": "Mux16_8",
+      "targetHandle": "sel"
+    },
+    {
+      "id": "e7",
+      "source": "inpin5",
+      "sourceHandle": "out[1]",
+      "target": "Mux16_9",
+      "targetHandle": "sel"
+    },
+    {
+      "id": "e8",
+      "source": "Mux16_7",
+      "sourceHandle": "out",
+      "target": "Mux16_9",
+      "targetHandle": "a"
+    },
+    {
+      "id": "e9",
+      "source": "Mux16_8",
+      "sourceHandle": "out",
+      "target": "Mux16_9",
+      "targetHandle": "b"
+    },
+    {
+      "id": "e10",
+      "source": "Mux16_9",
+      "sourceHandle": "out",
+      "target": "outpin6",
+      "targetHandle": "in"
+    }
+  ]
+}

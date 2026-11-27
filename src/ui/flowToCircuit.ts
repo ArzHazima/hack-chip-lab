@@ -38,7 +38,7 @@ export function flowToCircuit(
       if (n.data.hackFile) {
         const program = programs?.get(n.data.hackFile)
         if (program) inst.program = program
-        else warnings.push(`${n.data.type} ${n.id}: ${n.data.hackFile} is not loaded (use Load folder / Load files), so the ROM is empty`)
+        else warnings.push(`${n.data.type} ${n.id}: ${n.data.hackFile} is not loaded, so the ROM is empty. Reload the folder to restore the program file ${n.data.hackFile} (Load folder / Load files): only the file name is remembered after a refresh, not its contents.`)
       }
       if (n.data.keyValue) inst.key = n.data.keyValue
       circuit.chips.push(inst)
