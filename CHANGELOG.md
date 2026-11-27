@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Project 5, stage 3: the official script format and internal state in `.tst`
+- **Internal state by chip type** (`engine/stateRef.ts`): `set RAM16K[3] 5`, `set PC[] 0`, `set DRegister[] 7`,
+  output columns such as `RAM16K[3]%D1.6.1`, `PC[]%D0.4.0`, `DRegister[]`, `ARegister[]` and `ARegister[0]`, `Screen[i]`,
+  `Memory[i]`, `Keyboard[]`. A pin with the same name wins; a block on the board beats one inside a CPU / Computer;
+  two candidates give an error that lists them; `DRegister[]` / `ARegister[]` without such a block tells the user to
+  use the DRegister / ARegister block (not a generic Register). Register values read by a script are the values
+  latched at the tick (the course's CPU.cmp shows D already new at time "1+"); the output pins change at tock.
+- **`ROM32K load Prog.hack`** (also for Computer) takes the program from the loaded `.hack` files by name; a file that is
+  not loaded is an error pointing to Load files.
+- **`while pin <> value { }`** (= <> < > <= >=) with a cap of 100,000 loops per script. A cap hit stops the script with a
+  message that names the step (the last `echo`) and tells the user to set the key box of the Keyboard block; the rows
+  produced so far are kept and compared. `echo "..."` shows an info line in the results; `clear-echo` is accepted;
+  `load X.hdl`, `output-file` and `compare-to` are ignored with a warning (never silently).
+- **Official .cmp format:** a cell of stars (`*******`) accepts any value; header names (even cut to the column width,
+  `addre`, `DRegiste`) are never compared, columns match by position. `set` accepts `%B` `%X` `%D` and negatives; the
+  tokenizer keeps `"quoted text"` in one piece, so commas inside `echo` are harmless.
+- **Memory:** result rows keep only text and a pass flag. The wire values of a clicked row are rebuilt by **replaying**
+  the script up to that row (`ExerciseRun.replay`). 100,000 rows on a circuit with about 100 wires: 618.6 MB -> 10.7 MB.
+  The results table shows only the visible rows when there are more than 300.
+- **Speed:** the simulator caches the last evaluation, so tick and tock evaluate the circuit once each, and an `output`
+  after them adds nothing (before: three evaluations per `tick, tock, output`).
+- Verified against the official Project 5 course files (kept outside the repository, test skipped when absent):
+  CPU, CPU-external, ComputerAdd, ComputerMax, ComputerRect pass every row; Memory passes all rows up to the first
+  keyboard wait (44 / 67, 66 / 67 with the key box at 75).
+- Tests: 368 -> 426 (433 on a machine that has the official files: the official-file cases only run there).
+
 ### Project 5, stage 2: native CPU and Computer
 - **CPU** and **Computer** built-in chips in the "Project 5 – Computer" section, with Hack semantics: A and D
   registers, PC, ALU, all 8 jump conditions, every destination combination, `reset` on PC. Timing: tick samples the

@@ -157,6 +157,21 @@ Changes from the design above, and why:
 - **More than 32768 `.hack` instructions is an error** (as designed); invalid lines are skipped with a warning naming the line, and the warning says later instructions move up by one address.
 - **Not done in this stage (still open in the plan):** the "tick and tock evaluate once each" cheap fix, and the lazy snapshot replay.
 
+## Stage 3 as built (2026-11-27)
+- **Resolution** is exactly decision 1 (pin first, then type; depth 0 = block, depth 1 = inside CPU / Computer / Memory; unique at the
+  shallowest depth or an error). `SeqBehavior.exposesWords` was added next to `exposes` for the memories inside Computer / Memory.
+  No hierarchy exists yet (stage 6), so "depth" is only 0 or 1.
+- **Register peek = value latched at the tick.** Found by running the official CPU.tst: its `DRegister[]` column is already new at
+  "1+". Output pins (`addressM`, `pc`) still change at tock. A poke sets both phases.
+- **`ROM32K load`** errors when the file is not loaded (decision 1.6) and loads every ROM32K / Computer.
+- **Lazy replay** (decision 4): rows are text + a flag; `replay(i)` re-runs the script to row i. Measured on 100,000 rows x ~100 wires:
+  618.6 MB before, 10.7 MB after.
+- **Cheap fix of decision 3** done as an evaluation cache in `Simulator` (a tick keeps the cache, a tock drops it).
+- **`while`** is capped at 100,000 loops per script; the Keyboard has ONE key box, so a script that waits for two different keys
+  (the official Memory.tst: K then Y) can only get past the first wait.
+- Official files (not in the repo) pass: CPU 92/92, CPU-external 92/92, ComputerAdd 14/14, ComputerMax 27/27, ComputerRect 64/64,
+  Memory 44/67 without a key and 66/67 with the key box at 75.
+
 ## Stage 2 as built (2026-11-26)
 - **CPU timing is defined exactly** (the ADR only said "hand-trace tables"): tick samples inM, instruction, reset and the
   current A, D, PC and computes the next ones; tock commits. The ALU and a jump use the OLD A and D. `reset` forces PC to

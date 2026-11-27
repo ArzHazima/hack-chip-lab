@@ -51,8 +51,13 @@ Then open the address Vite prints (usually http://localhost:5173).
 - **Project 5 blocks:** ROM32K (pick a loaded `.hack` program), Screen, Keyboard, Memory (RAM16K + Screen +
   Keyboard in the Hack address map), **CPU** and **Computer** (ROM + CPU + memory in one block that runs the chosen
   program, about 400,000 cycles per second). Load `.hack` files with **Load folder** / **Load files**. You can also
-  build the Computer yourself from the ROM32K, CPU and Memory blocks. Not built yet: `.tst` access to A / D / PC, the
-  screen and keyboard view (see `docs/ADR-R2-project5.md`).
+  build the Computer yourself from the ROM32K, CPU and Memory blocks. The official Project 5 scripts (CPU, CPU-external,
+  Memory, ComputerAdd / Max / Rect) run on them, including `ROM32K load Prog.hack`, `RAM16K[3]`, `PC[]`,
+  `DRegister[]`, `while` and `echo`. Not built yet: the screen and keyboard view (see `docs/ADR-R2-project5.md`).
+- **Building your own CPU?** Use the **ARegister** and **DRegister** blocks (sidebar "Project 3 – Memory"), not a generic
+  Register: the official `CPU.tst` / `Computer*.tst` read `ARegister[]` and `DRegister[]` by chip type, and a circuit
+  without those blocks gets a message that says so. Likewise `RAM16K[i]`, `Screen[i]` and `PC[]` need the RAM16K,
+  Screen and PC blocks.
 - **Clock:** Tick / Tock / Step / Reset with a cycle counter and the stored value of every register chip (DFF, Bit, Register, PC ...).
 - **Editing:** select a chip, pin or wire and press Delete / Backspace (or use **Delete selected**).
 - **Autosave:** every chip keeps its own circuit in your browser's local storage.
@@ -93,13 +98,19 @@ files is ignored by git on purpose.
 ## Known limitations
 
 - **No CPU, Memory or Computer yet:** there is no ROM, screen or keyboard, and `.hack` programs cannot be loaded.
-- **Sequential support is basic:** DFF, Bit, Register, ARegister, DRegister, PC and the RAM chips work with
-  Tick / Tock / Step and `tick` / `tock` / `ticktock` in `.tst` scripts, but a `.tst` cannot read or set a chip's
-  internal state (`RAM16K[0]`, `PC[]`).
+- **A `.tst` that waits for a key** (the official Memory.tst waits for K, then for Y) cannot be completed in one run:
+  the Keyboard block has one key box, so a script that waits for two different keys stops at the second wait (with a
+  message; the rows before it are kept and compared).
 - **No reusable chips:** you cannot save your own circuit and use it as a chip inside another one.
 - **Only the `.hdl` interface is read**, never its implementation.
-- **Only a subset of `.tst`** is supported (`set`, `eval`, `tick`, `tock`, `ticktock`, `output`, `output-list`,
-  `repeat`); other commands are skipped with a warning, and bus indexing such as `set a[0] 1` is an error.
+- **Only a subset of `.tst`** is supported. Commands: `set`, `eval`, `tick`, `tock`, `ticktock`, `output`,
+  `output-list` (with `time`), `repeat N { }`, `while x <> v { }` (also `=` `<` `>` `<=` `>=`; at most 100,000 loops
+  per script), `echo "text"` (shown as an info line), `clear-echo`, `ROM32K load File.hack`, and internal state
+  `Type[]` / `Type[i]` (RAM8 ... RAM16K, ROM32K, Screen, Memory, Keyboard, PC, DFF, Bit, Register, ARegister,
+  DRegister, also through a CPU / Computer / Memory block) in `set`, `output-list` and `while`. Values: `5`, `-5`,
+  `%D5`, `%B101`, `%X1F`. `load X.hdl`, `output-file` and `compare-to` are ignored with a warning; any other command is
+  skipped with a warning, and bus indexing of a pin such as `set a[0] 1` is an error. In a `.cmp`, a cell of stars
+  (`*******`) accepts any value and the header names are ignored (columns match by position).
 - **Every pin and bus is at most 16 bits wide.**
 - **Bit ranges on pins cannot be edited:** delete the range (`×`) and add a new one. Split / Join settings
   likewise cannot be edited after you drop the node (delete it and drop a new one).
@@ -111,8 +122,7 @@ files is ignored by git on purpose.
 No dates; these are ideas in rough priority order, and none of them has been started.
 
 1. **Reusable chips:** save a circuit you built and use it as a chip inside other circuits.
-2. **Memory, CPU and Computer:** ROM with a loadable `.hack` program, screen and keyboard, and `.tst` access to
-   internal chip state. This also needs a faster evaluation engine.
+2. **Screen and keyboard view** for the Computer, and a faster evaluation engine for CPUs built from gates.
 3. **HDL export:** write the circuit you built back out as a `.hdl` file.
 4. UI polish and performance for large circuits.
 

@@ -63,11 +63,18 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
     computes next registers and a pending write (writeM: address A, value outM); tock commits both. Reset button =
     A, D, PC, RAM, Screen cleared, ROM program and key kept; the `reset` pin only forces PC to 0. The Computer block has the
     same program dropdown as ROM32K plus the key box, and shows PC as its "stored" badge.
-  - **Internal state for stage 3:** `SeqBehavior.exposes` maps built-in chip TYPES to a register name
-    (`CPU` and `Computer`: `{ ARegister: 'A', DRegister: 'D', PC: 'PC' }`), `peekReg` / `pokeReg` read and write it
-    (A, D masked to 16 bits, PC to 15), `Simulator.peekRegister / pokeRegister(chipId, 'A' | 'D' | 'PC')`; memory words via
-    `Simulator.peek / poke(chipId, address)` (Computer: the Memory map). The `.tst` syntax (`ARegister[]`, `ROM32K load`)
-    is NOT built yet (stage 3).
+  - **Internal state in `.tst` (stage 3, `engine/stateRef.ts`):** `Type[]` / `Type[i]` in `set`, `output-list` and `while`,
+    resolved by chip TYPE: depth 0 = a block of that type on the board, depth 1 = inside a CPU / Computer / Memory block
+    (`SeqBehavior.exposes`: type to register name, CPU and Computer `{ ARegister: 'A', DRegister: 'D', PC: 'PC' }`;
+    `SeqBehavior.exposesWords`: type to word range, Computer and Memory `RAM16K` 0.., `Screen` 16384.., `Keyboard` 24576).
+    A pin with that name wins; the shallowest unique candidate is used, several = an error listing them; none = an error
+    (for `ARegister` / `DRegister`: "use the ARegister / DRegister block, not a generic Register"). `X[]` and `X[0]` both work
+    for a single value (registers, PC, Keyboard); a memory needs `X[i]` (bounds checked). `peek` / `poke` exist on
+    DFF, Bit, Register ..., PC, RAMs and the Project 5 memories. **A register's `peek` is the value latched at the tick**
+    (`next`), so a script sees `DRegister[]` already new at "1+" like the official CPU.cmp; the output pins change at tock.
+    `poke` sets both phases. `Simulator.peekRegister / pokeRegister(chipId, 'A' | 'D' | 'PC')`, `peek / poke(chipId, address)`.
+    `ROM32K load X.hack` looks X up in the loaded programs (`RunOptions.programs`, case-insensitive, error if missing)
+    and loads every ROM32K / Computer. `set Keyboard[] k` sets the key (also inside Memory / Computer).
   - **`.hack` files** (`engine/hack.ts` `parseHack`): one 16-character 0/1 instruction per line; blank lines, spaces,
     a BOM and CRLF are fine; any other line is skipped WITH a warning naming its line number (at most 20 warnings, then
     "... and N more"); more than 32768 instructions is an error. `.hack` is a 4th accepted extension in file loading,
@@ -157,7 +164,8 @@ src/
     sequential.ts  # Simulator: per-instance state, eval/tick/tock/step/reset, stored()
     cmp.ts         # .cmp parser (combinational tables)
     runTests.ts    # run all .cmp rows against a circuit → results (plans once, evaluate() per row)
-    tst.ts         # .tst subset (set/eval/tick/tock/output/repeat/output-list) + compareToCmp
+    tst.ts         # .tst subset (set/eval/tick/tock/output/repeat/while/echo/ROM32K load/output-list, Type[i] state) + compareToCmp
+    stateRef.ts    # Type[] / Type[i] in .tst: resolve a chip TYPE to one instance (block or inside CPU/Computer/Memory)
     hdl.ts         # .hdl INTERFACE parser (IN/OUT only)
     hack.ts        # .hack parser (16-character 0/1 lines → words, warnings with line numbers)
     cpu.ts         # pure Hack CPU logic: alu, cpuOutputs, cpuNext (used by the CPU and Computer chips)
@@ -181,6 +189,24 @@ tests/         # end-to-end tests; fixtures/buses/ = 3 INVENTED chips (hdl/tst/c
 ```
 
 ## Engine rules
+- **`.tst` format features (stage 3, `engine/tst.ts`):** `time` in output-list (`N+` after a tick, `N` after a tock); `set` values
+  `%B %X %D` and negatives; `while x <op> v { }` (= <> < > <= >=, ordering signed for 16-bit values) with a script-wide cap
+  of 100,000 loops: a hit throws an internal `StopRun`, the run returns the rows so far plus `TstOutput.stopped` (message names
+  the last `echo` and the Keyboard key box); `echo "text"` goes to `TstOutput.info` (shown under the results summary),
+  `clear-echo` is a no-op; `load X.hdl`, `output-file`, `compare-to` give one warning each. The tokenizer keeps `"..."` as one
+  token (an unclosed quote ends at the end of its line). `compareToCmp` compares cell by cell by POSITION (header names are
+  never used, they may be cut to the column width), an expected cell of only `*` accepts anything.
+- **Rows are small, snapshots are lazy (stage 3):** `runTst` keeps NO wire values. `ExerciseRow` = `{index, pass, expected, actual}`
+  (text). `ExerciseRun.replay(i)` re-runs the script with `RunOptions.captureRow = i` (stops at that `output`) and returns the
+  `Snapshot`; `RunView.replay` hands it to App, which colours the board for the selected row. 100,000 rows: 10.7 MB
+  (`tests/memory.test.ts`; it was 618.6 MB with per-row snapshots). `ResultsTable` renders only the visible rows above 300
+  rows (fixed row height `--result-row-h` = 28 px).
+- **Evaluation cache (stage 3):** `Simulator.eval` returns the cached result while the stored state (`version`) and the inputs are
+  the same. State changes at tock, reset, poke, loadRom, setKeyboard. A TICK does not change it (it only latches values the tock
+  commits; no `read` looks at them). So tick and tock evaluate once each and `output` is free; `Simulator.evalCount` counts real
+  evaluations. A new chip whose `read` depended on latched values would break this: keep `read` a function of committed state.
+- **Official-file check (`tests/official.test.ts`):** runs the course's Project 5 scripts from the git-ignored `examples/project5/`
+  against the built-in chips; skipped when the folder is missing. Never copy those files into the repo.
 - Signals are numbers; a pin has a width (1 or 16, sometimes 2/3 for `sel`). Mask values to width.
 - Evaluate in topological order; a cycle → clear error, not a hang. Dependencies are PER INPUT PIN: each clocked chip
   declares `seq.combInputs`, the inputs that change its output right now. DFF, DFF16, Bit, Register, ARegister,
@@ -227,7 +253,7 @@ tests/         # end-to-end tests; fixtures/buses/ = 3 INVENTED chips (hdl/tst/c
   width is cut (mask) and reported as a warning, once per distinct message. `output-list` formats
   `%B %D %X %S` (`name%B2.1.2` = pad, length, pad); a new `output-list` REPLACES the active columns (rows use the list
   in effect when `output` ran; `Tst.outputList` is the last one), and `%B`/`%X` columns too short for the value give a
-  warning. Unknown commands (while, if ...) → warning and skipped; bus
+  warning. Unknown commands (if ...) → warning and skipped; bus
   indexing (`set a[0] 1`) is an error. Output rows and .cmp rows are compared as trimmed text cells, case-insensitive
   (hex), header ignored; works for sequential .cmp files too (`time` column, `0+`).
 - `.cmp` format: header row `|  a  |  b  | out |`, then value rows. Values are binary strings
