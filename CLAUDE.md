@@ -72,7 +72,10 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
     for a single value (registers, PC, Keyboard); a memory needs `X[i]` (bounds checked). `peek` / `poke` exist on
     DFF, Bit, Register ..., PC, RAMs and the Project 5 memories. **A register's `peek` is the value latched at the tick**
     (`next`), so a script sees `DRegister[]` already new at "1+" like the official CPU.cmp; the output pins change at tock.
-    `poke` sets both phases. `Simulator.peekRegister / pokeRegister(chipId, 'A' | 'D' | 'PC')`, `peek / poke(chipId, address)`.
+    `poke` sets both phases. **Exact `peek` semantics at the tick phase (pinned by `robustness.test.ts`, M4):** after a `tick`
+    a register (DFF, Bit, Register ..., PC, CPU A / D / PC) already `peek`s the NEW value (the latch), while its output pin
+    still shows the OLD one until the `tock`; a memory word (RAM8 ... RAM16K, Screen, Memory) `peek`s the OLD value after the
+    tick and the new one only after the `tock`, because RAM writes are committed at tock. `Simulator.peekRegister / pokeRegister(chipId, 'A' | 'D' | 'PC')`, `peek / poke(chipId, address)`.
     `ROM32K load X.hack` looks X up in the loaded programs (`RunOptions.programs`, case-insensitive, error if missing)
     and loads every ROM32K / Computer. `set Keyboard[] k` sets the key (also inside Memory / Computer).
   - **`.hack` files** (`engine/hack.ts` `parseHack`): one 16-character 0/1 instruction per line; blank lines, spaces,
@@ -193,13 +196,21 @@ tests/         # end-to-end tests; fixtures/buses/ = 3 INVENTED chips (hdl/tst/c
   `%B %X %D` and negatives; `while x <op> v { }` (= <> < > <= >=, ordering signed for 16-bit values) with a script-wide cap
   of 100,000 loops: a hit throws an internal `StopRun`, the run returns the rows so far plus `TstOutput.stopped` (message names
   the last `echo` and the Keyboard key box); `echo "text"` goes to `TstOutput.info` (shown under the results summary),
-  `clear-echo` is a no-op; `load X.hdl`, `output-file`, `compare-to` give one warning each. The tokenizer keeps `"..."` as one
+  `clear-echo` is a no-op; `load X.hdl`, `output-file`, `compare-to` give one GREY info line each (`Tst.notices`, merged first into `ExerciseRun.info`; never a yellow warning, so a passing official script shows no yellow). The tokenizer keeps `"..."` as one
   token (an unclosed quote ends at the end of its line). `compareToCmp` compares cell by cell by POSITION (header names are
   never used, they may be cut to the column width), an expected cell of only `*` accepts anything.
+- **Script limits and stopping (pre-v1.0 robustness):** warnings and info lines are collected in a `Listed` (a Set, O(1) de-dup;
+  at most 50 shown plus one "... and N more" line) for parse-time warnings, run-time warnings and info. An output-list column
+  has `left + len + right <= 64` and an output-list at most 200 columns (both TstParseError, checked at parse time); all output
+  rows together at most 50 million characters and at most 100,000 rows. **Any `CircuitError` raised in the middle of a script**
+  (unknown pin, `Type[99999]` out of range, command / loop budget, the limits above) ends the run with `TstOutput.stopped`
+  and KEEPS the rows produced so far (the same path as the `while` cap); only an error before the first row is still thrown
+  (nothing to keep, the board shows it like any circuit error). A stopped run is never "ok".
 - **Rows are small, snapshots are lazy (stage 3):** `runTst` keeps NO wire values. `ExerciseRow` = `{index, pass, expected, actual}`
   (text). `ExerciseRun.replay(i)` re-runs the script with `RunOptions.captureRow = i` (stops at that `output`) and returns the
   `Snapshot`; `RunView.replay` hands it to App, which colours the board for the selected row. 100,000 rows: 10.7 MB
-  (`tests/memory.test.ts`; it was 618.6 MB with per-row snapshots). `ResultsTable` renders only the visible rows above 300
+  (it was 618.6 MB with per-row snapshots). `tests/memory.test.ts` now checks 30,000 rows by walking the result and
+  counting bytes per row (no GC flags, no heap measurement, so it cannot flake). `ResultsTable` renders only the visible rows above 300
   rows (fixed row height `--result-row-h` = 28 px).
 - **Evaluation cache (stage 3):** `Simulator.eval` returns the cached result while the stored state (`version`) and the inputs are
   the same. State changes at tock, reset, poke, loadRom, setKeyboard. A TICK does not change it (it only latches values the tock

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Pre-v1.0 fixes, part 1: engine robustness
+- **H1:** `.tst` warnings and `echo` info lines are de-duplicated with a Set and capped (50 + "... and N more"). 60,000 distinct
+  unknown commands parsed in 68-72 s before, now 67 ms; 60,000 distinct `echo` lines 8-10 s, now 121 ms.
+- **H2:** an output-list column must have `left + len + right <= 64`, an output-list at most 200 columns, all output at most
+  50 million characters (and still 100,000 rows); a limit stops the script with a message and keeps the rows so far.
+- **M3:** a run-time error in the middle of a script (unknown pin, `Type[99999]`, script too long ...) returns the rows
+  produced so far plus a "stopped" message instead of throwing them away. An error before the first row is thrown as before.
+- **M5:** the ignored `load` / `output-file` / `compare-to` lines are grey info lines, not yellow warnings.
+- **M4:** documented (CLAUDE.md) and pinned by a test: a register's `peek` is the value latched at the tick, a memory word
+  changes only at the tock. No behaviour change.
+- **L1/L2:** `tests/memory.test.ts` uses 30,000 rows and counts bytes by walking the result (13.5 s before, no GC flag);
+  `perf.test.ts` thresholds are looser for slow CI machines.
+- **L3:** Node is pinned to the current LTS major (26) in `ci.yml`, `pages.yml` and `.nvmrc`.
+
 ### Project 5, stage 3: the official script format and internal state in `.tst`
 - **Internal state by chip type** (`engine/stateRef.ts`): `set RAM16K[3] 5`, `set PC[] 0`, `set DRegister[] 7`,
   output columns such as `RAM16K[3]%D1.6.1`, `PC[]%D0.4.0`, `DRegister[]`, `ARegister[]` and `ARegister[0]`, `Screen[i]`,
