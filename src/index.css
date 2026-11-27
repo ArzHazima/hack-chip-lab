@@ -43,6 +43,7 @@
   --radius: 6px;
   --sidebar-w: 240px;
   --results-max-h: 240px;
+  --result-row-h: 28px; /* every results row has this height (the table windows long runs) */
 }
 
 * { box-sizing: border-box; }
@@ -186,6 +187,12 @@ table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 4px var(--gap-4); border-top: 1px solid var(--line-soft); }
 th { position: sticky; top: 0; background: var(--panel-2); font-size: var(--fs-sm); }
 tbody tr { cursor: pointer; }
+/* fixed row height: the results table windows long runs (ResultsTable.tsx, ROW_H = 28) */
+.results-scroll tbody tr { height: var(--result-row-h); }
+.results-scroll tbody tr td { padding-top: 0; padding-bottom: 0; line-height: 27px; white-space: nowrap; overflow: hidden; box-sizing: border-box; }
+.results-scroll tbody tr.results-spacer { height: auto; cursor: default; }
+.results-scroll tbody tr.results-spacer td { padding: 0; border-top: 0; line-height: 0; }
+.results-info { font-size: var(--fs-sm); color: var(--muted); padding-top: var(--gap-1); }
 tbody tr:hover { background: var(--bg); }
 tr.fail td { background: var(--bad-soft); }
 tr.selected td { box-shadow: inset 0 0 0 9999px rgba(79, 70, 229, .15); }
