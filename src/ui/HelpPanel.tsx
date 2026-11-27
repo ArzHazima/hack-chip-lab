@@ -47,6 +47,16 @@ export default function HelpPanel({ onClose }: { onClose: () => void }) {
           ))}
         </ol>
         <p className="help-tip">
+          <b>Examples:</b> after “Load example chips”, pick Mirror16 or Pick4of16 and click “Load solution” to fill the board
+          with a ready-made circuit to compare with yours.
+        </p>
+        <p className="help-tip">
+          <b>Project 5:</b> the sidebar has ROM32K, Screen, Keyboard, Memory, CPU and Computer blocks. A ROM32K or Computer
+          block reads a <b>.hack</b> program: load it with “Load folder” or “Load files”, then choose it in the block.
+          If you build your own CPU, use the <b>ARegister</b> and <b>DRegister</b> blocks (not a generic Register), because
+          the official test scripts read them by name.
+        </p>
+        <p className="help-tip">
           No folder? You can still build freely: add pins from “Pins” on the left, then use “Upload .cmp” (and
           optionally “Upload .tst”) in the toolbar. The Help button at the top right opens this panel again.
         </p>

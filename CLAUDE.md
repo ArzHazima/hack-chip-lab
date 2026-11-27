@@ -151,6 +151,24 @@ Web app for wiring Nand2Tetris chips (Hack computer) on a 2D canvas and checking
   `onLoadFiles` like a picked folder. Keep `public/examples/` in sync with the invented fixtures; list new files in
   its `index.json`.
 
+- **Load solution (pre-v1.0 part 2):** `public/examples/solutions/<Chip>.json` (Mirror16, Pick4of16; invented circuits in the
+  saved-circuit JSON shape) listed in `index.json` under `"solutions"`. The toolbar button (Files group) is enabled only after
+  **Load example chips** (`solutionNames` in App, cleared by any other load) and when the active chip has one. It fetches
+  (`fetchSolution`), runs `sanitizeCircuit` + `reconcilePins` like a restored circuit, and shows a "compare with your own" notice.
+  `tests/solutions.test.ts` runs each solution against its chip's .tst/.cmp. Keep them in sync with the example .hdl files.
+- **Run on a board with no wire into any output pin** shows `BUILD_FIRST` ("Build the circuit first: ...", `ui/buildHint.ts`)
+  before the pin errors. A ROM32K whose `.hack` file is not loaded (e.g. after a refresh: only the name is saved) warns
+  "Reload the folder to restore the program file X".
+- **Results table:** the row height is the constant `ROW_H` (also set as `--result-row-h` inline) and a layout effect measures a
+  real row; `windowRange` clamps the window to existing rows (never empty). Clicking a row replays the script OUTSIDE render:
+  `ui/replayCache.ts` (`ReplayCache` keeps the last (run, row) result, `scheduleReplay` runs after a frame) and the table shows
+  "computing…". The replay itself is still synchronous (about 13 s for the last row of 100,000 rows): known limitation, a
+  Worker is on the v1.1 roadmap.
+- **Dragging (M6):** `structureKey(nodes, edges)` (`ui/structureKey.ts`) ignores positions and selection; wire widths, range
+  issues and the live evaluation are memoised on it, never on `nodes`. Measured on 150 nodes: engine work < 1 ms per move; the
+  production-build drag frame is still a median 43 ms (React Flow drawing), a documented v1.0 limitation.
+- vitest `testTimeout` is 30 s (`vite.config.ts`) because parallel workers made heavy tests flake.
+
 ## Tech stack
 - Vite + React + TypeScript (strict)
 - `@xyflow/react` (React Flow) for the canvas — do not build a custom canvas

@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Pre-v1.0 fixes, part 2: UI and docs
+- **M1:** the results table row height is one constant (`ROW_H`, also written as the CSS variable) and a layout effect
+  measures a real row, so a different height cannot show the wrong rows. The window is clamped to existing rows (a stale
+  scroll position once left the table blank; found and fixed in the real browser). Checked with a 100,000-row result:
+  top, middle, quarter, row 54,321, near the end and bottom all show the right rows, also with rows forced to 34 px.
+- **M2:** clicking a row replays the script after the page painted a "computing…" note (state + effect, `ui/replayCache.ts`),
+  and the last replay is cached. Known limitation: the replay itself still blocks the page (about 13 s for the last row of
+  100,000 rows); moving it to a Worker is on the v1.1 roadmap.
+- **M6:** measured a drag on a 150-node board. The engine side costs under 1 ms per mouse move (`compileRanges` 0.14 ms,
+  `flowToCircuit` 0.2 ms, evaluation 0.004 ms). Wire widths, range issues and the live evaluation are now memoised by
+  `structureKey` (ignores positions). In the production build a drag frame is still a median 43 ms (average 119 ms): a
+  known limitation for large circuits, on the v1.1 roadmap.
+- **Run on an empty or unwired board** says "Build the circuit first: pick blocks on the left and connect them to the pins."
+- **Load solution** button for the example chips (Mirror16, Pick4of16): `public/examples/solutions/*.json`, loaded like a
+  saved circuit; a test checks that both pass every row of their chip's test.
+- A `.hack` file that is not loaded after a refresh now says "Reload the folder to restore the program file X".
+- Help panel mentions the Project 5 blocks, `.hack` files, Load solution and the ARegister / DRegister tip. README: "Load
+  files" wording, "Known limitations (v1.0)", v1.1 roadmap, non-affiliation sentence.
+- Tests: `testTimeout` 30 s in the vitest config (parallel runs made two heavy tests flake); assertions unchanged.
+
 ### Pre-v1.0 fixes, part 1: engine robustness
 - **H1:** `.tst` warnings and `echo` info lines are de-duplicated with a Set and capped (50 + "... and N more"). 60,000 distinct
   unknown commands parsed in 68-72 s before, now 67 ms; 60,000 distinct `echo` lines 8-10 s, now 121 ms.
