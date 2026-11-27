@@ -426,8 +426,8 @@ describe('.tst parser and runner', () => {
   })
 
   it('unknown commands become warnings and are skipped (including their { } block)', () => {
-    const t = parseTst('frobnicate 1 2; while out = 0 { tick, repeat 2 { tock; } } set a 1; tick;')
-    expect(t.warnings).toEqual(['Unknown command "frobnicate" was ignored', 'Unknown command "while" was ignored'])
+    const t = parseTst('frobnicate 1 2; if out = 0 { tick, repeat 2 { tock; } } set a 1; tick;')
+    expect(t.warnings).toEqual(['Unknown command "frobnicate" was ignored', 'Unknown command "if" was ignored'])
     expect(t.commands.map((c) => c.op)).toEqual(['set', 'tick'])
   })
 

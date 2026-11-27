@@ -417,7 +417,7 @@ export default function App() {
         if (!active.cmp) return setErrors([`⚠ ${active.name}.cmp is missing, so there is nothing to compare with.`])
         if (pinErrors.length) return setErrors(pinErrors)
         if (active.tst) {
-          const result = runExercise(circuit, active.tst.text, active.cmp.text)
+          const result = runExercise(circuit, active.tst.text, active.cmp.text, { programs: hackPrograms })
           setErrors([])
           setWarnings([...circuitWarnings, ...result.warnings.map((w) => `${active.tst!.name}: ${w}`)])
           return setRun(fromExercise(result))
@@ -433,7 +433,7 @@ export default function App() {
       if (!manualCmp) return setErrors(['Upload a .cmp file first (or load a folder and pick a chip).'])
       if (pinErrors.length) return setErrors(pinErrors)
       if (manualTst) {
-        const result = runExercise(circuit, manualTst.text, manualCmp.text)
+        const result = runExercise(circuit, manualTst.text, manualCmp.text, { programs: hackPrograms })
         setErrors([])
         setWarnings([...circuitWarnings, ...result.warnings.map((w) => `${manualTst.name}: ${w}`)])
         return setRun(fromExercise(result))
@@ -471,7 +471,11 @@ export default function App() {
   // What the board shows: the stored graph, plus colors/values from EITHER the selected
   // result row OR the live clocked simulation. Computed on the fly (useMemo) so the real
   // nodes/edges state stays clean.
-  const snap = run && selectedRow !== null ? run.rows[selectedRow]?.snap : undefined
+  // A script run keeps no wire values per row: the clicked row is replayed (the script re-runs up to it).
+  const snap = useMemo(
+    () => (run && selectedRow !== null ? (run.rows[selectedRow]?.snap ?? run.replay?.(selectedRow)) : undefined),
+    [run, selectedRow],
+  )
   const view = useMemo(
     () =>
       snap

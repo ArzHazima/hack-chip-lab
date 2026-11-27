@@ -196,7 +196,9 @@ describe('CPU: timing of tick and tock', () => {
     const inp = { inM: 0, instruction: asm('@9'), reset: 0 }
     sim.tick(inp)
     expect(sim.eval(inp).outputs).toMatchObject({ addressM: 0, pc: 0 }) // still the old state
-    expect(sim.peekRegister('u', 'A')).toBe(0)
+    // ...but the register a .tst script reads (ARegister[]) already shows the value latched at the tick, as the
+    // course's CPU.cmp expects at time "1+" (the output PINS change only at tock).
+    expect(sim.peekRegister('u', 'A')).toBe(9)
     sim.tock(inp)
     expect(sim.eval(inp).outputs).toMatchObject({ addressM: 9, pc: 1 })
     expect(sim.peekRegister('u', 'A')).toBe(9)

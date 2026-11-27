@@ -111,6 +111,12 @@ export function readMap(m: MemoryState, a: number): number {
   return a === KEYBOARD_ADDR ? m.key : 0
 }
 
+/** Like writeMap, but the Keyboard word can be set too: a .tst `set Keyboard[] 75` is "a key is held", not a write. */
+export function pokeMap(m: MemoryState, a: number, v: number): void {
+  if (a === KEYBOARD_ADDR) m.key = w16(v)
+  else writeMap(m, a, v)
+}
+
 export function writeMap(m: MemoryState, a: number, v: number): void {
   if (a < RAM_WORDS) m.ram[a] = v
   else if (a < KEYBOARD_ADDR) m.screen[a - SCREEN_BASE] = v
@@ -122,6 +128,13 @@ const clearMemory = (m: MemoryState): void => {
   m.screen.fill(0)
   m.pendAddr = -1 // the key is kept
 }
+
+/** Where the inner memories of Memory and Computer sit in their `peek` / `poke` addresses (the Hack memory map). */
+const INNER_WORDS = {
+  RAM16K: { base: 0, size: RAM_WORDS },
+  Screen: { base: SCREEN_BASE, size: SCREEN_WORDS },
+  Keyboard: { base: KEYBOARD_ADDR, size: 1 },
+} as const
 
 const memory = make('Memory', [p('in', W), p('load'), p('address', 15)], [p('out', W)], {
   combInputs: ['address'],
@@ -140,7 +153,8 @@ const memory = make('Memory', [p('in', W), p('load'), p('address', 15)], [p('out
   reset: (s) => clearMemory(s as MemoryState),
   setKey: (s, k) => void ((s as MemoryState).key = w16(k)),
   peek: (s, i = 0) => readMap(s as MemoryState, i),
-  poke: (s, i, v) => writeMap(s as MemoryState, i, v),
+  poke: (s, i, v) => pokeMap(s as MemoryState, i, v),
+  exposesWords: INNER_WORDS,
 })
 
 // ---- CPU: the Hack CPU with its own A, D and PC (logic in cpu.ts) ----
@@ -163,10 +177,13 @@ function peekRegs(r: CpuRegs, name: string): number | undefined {
   return name === 'A' ? r.a : name === 'D' ? r.d : name === 'PC' ? r.pc : undefined
 }
 
-function pokeRegs(r: CpuRegs, name: string, v: number): void {
-  if (name === 'A') r.a = v & 0xffff
-  else if (name === 'D') r.d = v & 0xffff
-  else if (name === 'PC') r.pc = v & 0x7fff
+/** A script's poke goes into BOTH phases, so it also wins over registers latched by a tick that has no tock yet. */
+function pokeRegs(st: CpuState, name: string, v: number): void {
+  for (const r of [st.cur, st.next]) {
+    if (name === 'A') r.a = v & 0xffff
+    else if (name === 'D') r.d = v & 0xffff
+    else if (name === 'PC') r.pc = v & 0x7fff
+  }
 }
 
 const cpuDeps = ['inM', 'instruction'] as const
@@ -195,8 +212,10 @@ const cpu = make(
     },
     stored: (s) => (s as CpuState).cur.pc,
     exposes: EXPOSES,
-    peekReg: (s, name) => peekRegs((s as CpuState).cur, name),
-    pokeReg: (s, name, v) => pokeRegs((s as CpuState).cur, name, v),
+    // What a script sees as ARegister[] / DRegister[] / PC[] is the value LATCHED AT THE TICK (`next`), like the course's
+    // simulator: after a tick the register already shows its new value, while the output pins (addressM, pc) change at tock.
+    peekReg: (s, name) => peekRegs((s as CpuState).next, name),
+    pokeReg: (s, name, v) => pokeRegs(s as CpuState, name, v),
   },
 )
 
@@ -243,10 +262,11 @@ const computer = make('Computer', [p('reset')], [], {
   loadRom: (s, words) => fillRom((s as ComputerState).rom, words),
   setKey: (s, k) => void ((s as ComputerState).mem.key = w16(k)),
   peek: (s, i = 0) => readMap((s as ComputerState).mem, i),
-  poke: (s, i, v) => writeMap((s as ComputerState).mem, i, v),
+  poke: (s, i, v) => pokeMap((s as ComputerState).mem, i, v),
   exposes: EXPOSES,
-  peekReg: (s, name) => peekRegs((s as ComputerState).cpu.cur, name),
-  pokeReg: (s, name, v) => pokeRegs((s as ComputerState).cpu.cur, name, v),
+  exposesWords: INNER_WORDS,
+  peekReg: (s, name) => peekRegs((s as ComputerState).cpu.next, name), // latched at the tick, see CPU
+  pokeReg: (s, name, v) => pokeRegs((s as ComputerState).cpu, name, v),
 })
 
 export const PROJECT5_CHIPS: ChipDef[] = [rom32k, screen, keyboard, memory, cpu, computer]

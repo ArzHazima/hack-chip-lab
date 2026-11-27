@@ -70,6 +70,12 @@ export interface SeqBehavior {
    * blocks answer the same names.
    */
   exposes?: Readonly<Record<string, string>>
+  /**
+   * Built-in chip TYPES whose WORDS live inside this block, with where they sit in `peek` / `poke` addresses:
+   * Computer and Memory: RAM16K {base 0, size 16384}, Screen {16384, 8192}, Keyboard {24576, 1}.
+   * So `RAM16K[3]` in a .tst reaches word 3 of a built-in Computer, like the official simulator's inner RAM16K.
+   */
+  exposesWords?: Readonly<Record<string, { base: number; size: number }>>
 }
 
 export interface ChipDef {
@@ -267,6 +273,19 @@ function seqChip(
 
 type Reg = { cur: number; next: number }
 
+/**
+ * peek / poke for a single stored value (DFF, Bit, Register ..., PC): the .tst script reads `Register[]` and
+ * writes `set PC[] 0`. A poke sets BOTH cur and next, so it also wins over a value latched by a tick that has not
+ * been followed by a tock yet.
+ */
+const regAccess = (width: number): Pick<SeqBehavior, 'peek' | 'poke'> => ({
+  peek: (s) => (s as Reg).next, // the value latched at the tick (equal to `cur` between cycles), like the course's simulator
+  poke: (s, _i, v) => {
+    const r = s as Reg
+    r.cur = r.next = mask(v, width)
+  },
+})
+
 /** D flip-flop: out(t+1) = in(t). `width` 16 gives DFF16 (16 DFFs side by side). */
 function dffChip(name: string, width: number): ChipDef {
   return seqChip(name, [p('in', width)], [p('out', width)], {
@@ -276,6 +295,7 @@ function dffChip(name: string, width: number): ChipDef {
     tick: (inp, s) => void ((s as Reg).next = inp.in),
     tock: (s) => void ((s as Reg).cur = (s as Reg).next),
     stored: (s) => (s as Reg).cur,
+    ...regAccess(width),
   })
 }
 
@@ -296,6 +316,7 @@ function loadRegisterChip(name: string, width: number): ChipDef {
     },
     tock: (s) => void ((s as Reg).cur = (s as Reg).next),
     stored: (s) => (s as Reg).cur,
+    ...regAccess(width),
   })
 }
 
@@ -317,6 +338,11 @@ function ramChip(name: string, addrBits: number): ChipDef {
         if (m.pending) m.mem[m.pending[0]] = m.pending[1]
         m.pending = null
       },
+      peek: (s, i = 0) => (s as Mem).mem[i] ?? 0,
+      poke: (s, i, v) => {
+        const m = (s as Mem).mem
+        if (i >= 0 && i < m.length) m[i] = v
+      },
     },
   )
 }
@@ -332,6 +358,7 @@ const pc = seqChip('PC', [p('in', W), p('load'), p('inc'), p('reset')], [p('out'
   },
   tock: (s) => void ((s as Reg).cur = (s as Reg).next),
   stored: (s) => (s as Reg).cur,
+  ...regAccess(W),
 })
 
 const seqDefs: ChipDef[] = [

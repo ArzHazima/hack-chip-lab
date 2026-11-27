@@ -32,15 +32,14 @@ export function fromExercise(run: ExerciseRun): RunView {
     total: run.total,
     headers: ['Expected (.cmp)', 'Actual'],
     note: [`Columns: ${run.columns.join(' | ')}`, run.message].filter(Boolean).join(' — '),
-    rows: run.rows.map((r) => ({
-      index: r.index,
-      pass: r.pass,
-      cells: [r.expected, r.actual],
-      snap: r.snapshot && {
-        inputs: r.snapshot.inputs,
-        outputs: r.snapshot.outputs,
-        wireValues: r.snapshot.wireValues,
-      },
-    })),
+    info: run.info,
+    rows: run.rows.map((r) => ({ index: r.index, pass: r.pass, cells: [r.expected, r.actual] })),
+    replay: (index) => {
+      try {
+        return run.replay(index)
+      } catch {
+        return undefined // the same script ran fine a moment ago; if it does not now, just show no colours
+      }
+    },
   }
 }

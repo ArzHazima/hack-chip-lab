@@ -114,14 +114,18 @@ describe('end to end: one exercise chip', () => {
 
   it('.tst (%B %D %X, comments, ignored load/compare-to) + .cmp: every row passes', () => {
     const run = runExercise(selectOr16(), TST, CMP)
-    expect(run.warnings).toEqual([])
+    // load / output-file / compare-to are ignored WITH a warning each; there is no other warning
+    expect(run.warnings.filter((w) => !/was ignored: /.test(w))).toEqual([])
+    expect(run.warnings.length).toBeGreaterThan(0)
     expect(run.columns).toEqual(['a', 'b', 'sel', 'out', 'out', 'out'])
     expect(run.rows.filter((r) => !r.pass)).toEqual([])
     expect(run.passed).toBe(4)
     expect(run.total).toBe(4)
     // clicking a row colours wires: row 2 has sel = 1 and out = 0x0FFF
-    expect(run.rows[1].snapshot?.inputs.sel).toBe(1)
-    expect(run.rows[1].snapshot?.outputs.out).toBe(0x0fff)
+    // (a row keeps no wire values; they are rebuilt by replaying the script up to that row)
+    expect(run.rows[1]).not.toHaveProperty('snapshot')
+    expect(run.replay(1)?.inputs.sel).toBe(1)
+    expect(run.replay(1)?.outputs.out).toBe(0x0fff)
   })
 
   it('a wrong circuit fails the rows it gets wrong', () => {
@@ -147,7 +151,7 @@ describe('end to end: one exercise chip', () => {
   it('a row-count mismatch is reported', () => {
     const run = runExercise(selectOr16(), 'output-list sel%B1.1.1; output;', '|sel|\n| 0 |\n| 1 |')
     expect(run.message).toMatch(/1 rows, .cmp has 2/)
-    expect(run.rows[1].snapshot).toBeUndefined()
+    expect(run.replay(1)).toBeUndefined() // there is no second row to replay
   })
 
   it('compares hex case-insensitively but shows the text as written', () => {

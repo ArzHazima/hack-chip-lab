@@ -70,5 +70,11 @@ export interface RunView {
   total: number
   headers: string[]
   rows: RunRow[]
+  /**
+   * Script runs keep NO wire values per row (memory). Clicking row `index` calls this to re-run the script up to that
+   * row and get its values. Rows of a combinational table carry `snap` instead.
+   */
+  replay?: (index: number) => Snap | undefined
+  info?: string[] // `echo` texts of the .tst, shown as info lines
   note?: string // extra line under the summary (column list, row-count mismatch ...)
 }

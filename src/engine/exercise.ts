@@ -1,7 +1,7 @@
 // Exercise chips: a folder of Name.hdl / Name.tst / Name.cmp triples, and running one.
 
 import type { Circuit } from './circuit'
-import { compareToCmp, parseTst, runTst, TstParseError, type Snapshot } from './tst'
+import { colLabel, compareToCmp, parseTst, runTst, TstParseError, type Snapshot } from './tst'
 
 export type Ext = 'hdl' | 'tst' | 'cmp'
 const EXTS: Ext[] = ['hdl', 'tst', 'cmp']
@@ -50,12 +50,15 @@ export function groupExerciseFiles(files: ExerciseFile[]): ExerciseChip[] {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * One row of the result: only text and a flag. The wire values of the board are NOT kept per row (100,000 rows x 300
+ * wires would be ~30 million numbers); `ExerciseRun.replay` rebuilds them for the one row that is clicked.
+ */
 export interface ExerciseRow {
   index: number
   pass: boolean
   expected: string // the .cmp row (cells joined with " | ")
   actual: string // the row our circuit produced
-  snapshot?: Snapshot // pin/wire values, for colouring the board
 }
 
 export interface ExerciseRun {
@@ -64,25 +67,35 @@ export interface ExerciseRun {
   total: number
   columns: string[] // output-list column names
   warnings: string[] // e.g. ignored unknown .tst commands
-  message?: string // e.g. row-count mismatch
+  info: string[] // `echo` texts of the script
+  message?: string // e.g. row-count mismatch, or why the script was stopped
+  /** Lazy replay: re-runs the script up to row `index` and returns the pin and wire values at that row. */
+  replay(index: number): Snapshot | undefined
+}
+
+export interface ExerciseOptions {
+  /** Loaded .hack programs by file name, for `ROM32K load X.hack`. */
+  programs?: ReadonlyMap<string, ArrayLike<number>>
 }
 
 /**
  * Runs a .tst script on the circuit and compares every `output` row with the .cmp.
  * Throws TstParseError (bad script) or CircuitError (bad circuit / unknown pin).
  */
-export function runExercise(circuit: Circuit, tstText: string, cmpText: string): ExerciseRun {
+export function runExercise(circuit: Circuit, tstText: string, cmpText: string, opts: ExerciseOptions = {}): ExerciseRun {
   const tst = parseTst(tstText)
   if (tst.outputList.length === 0) throw new TstParseError('The .tst has no output-list, so there is nothing to compare')
-  const out = runTst(circuit, tst)
+  const out = runTst(circuit, tst, opts)
   const cmp = compareToCmp(out.rows, cmpText)
-  const rows = cmp.rows.map((r) => ({ ...r, snapshot: out.snapshots[r.index] }))
+  const rows = cmp.rows
   return {
     rows,
     passed: rows.filter((r) => r.pass).length,
     total: rows.length,
-    columns: tst.outputList.map((c) => c.name),
+    columns: tst.outputList.map(colLabel),
     warnings: [...tst.warnings, ...out.warnings], // parser warnings first, then run-time ones
-    message: cmp.message,
+    info: out.info,
+    message: [out.stopped, cmp.message].filter(Boolean).join(' ') || undefined,
+    replay: (index) => (index < out.rows.length ? runTst(circuit, tst, { ...opts, captureRow: index }).captured : undefined),
   }
 }

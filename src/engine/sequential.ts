@@ -3,7 +3,7 @@
 
 import type { SeqBehavior } from './chips'
 import { chipOf } from './resolve'
-import type { Circuit } from './circuit'
+import type { Circuit, ChipInstance } from './circuit'
 import { evaluate, planOrder, stateOf, type ChipStates, type PlanStep, type SimResult } from './simulate'
 
 export class Simulator {
@@ -11,10 +11,22 @@ export class Simulator {
   private states: ChipStates = new Map() // chip id -> that instance's state
   private cycle = 0 // completed clock cycles
   private high = false // true between a tick and the following tock
+  private byId: Map<string, ChipInstance>
+  /**
+   * Cache of the last evaluation. A result stays valid while the stored state is unchanged (`version`) and the
+   * inputs are the same. State changes at tock, reset, poke, loadRom and setKeyboard. A TICK does not change it:
+   * it only latches values that the next tock commits, and no chip's `read` looks at them. So a script line like
+   * `tick, output; tock, output;` evaluates the circuit twice, not four times.
+   */
+  private version = 0
+  private cache?: { version: number; inputs: Record<string, number>; result: SimResult }
+  /** How many times the circuit was really evaluated (cache hits do not count). For tests and measurements. */
+  evalCount = 0
 
   /** Throws CircuitError if the circuit is invalid (bad wires, loop without a DFF ...). */
   constructor(public readonly circuit: Circuit) {
     this.order = planOrder(circuit)
+    this.byId = new Map(circuit.chips.map((x) => [x.id, x]))
   }
 
   /**
@@ -31,7 +43,12 @@ export class Simulator {
 
   /** Settle the combinational logic for these inputs. Never changes stored state. */
   eval(inputs: Record<string, number>): SimResult {
-    return evaluate(this.circuit, this.order, inputs, this.states)
+    const c = this.cache
+    if (c && c.version === this.version && sameInputs(c.inputs, inputs)) return c.result
+    this.evalCount++
+    const result = evaluate(this.circuit, this.order, inputs, this.states)
+    this.cache = { version: this.version, inputs: { ...inputs }, result }
+    return result
   }
 
   /** Rising edge: every clocked chip samples its inputs; outputs do not change yet. */
@@ -54,6 +71,7 @@ export class Simulator {
       }
       this.high = false
       this.cycle++
+      this.version++ // the stored state changed
     } // a tock without a preceding tick does nothing
     return this.eval(inputs)
   }
@@ -78,10 +96,12 @@ export class Simulator {
     }
     this.cycle = 0
     this.high = false
+    this.version++
   }
 
   /** Replace the program of every ROM32K in the circuit. Returns how many chips got it. */
   loadRom(words: ArrayLike<number>): number {
+    this.version++
     return this.forEachWith('loadRom', (seq, st) => seq.loadRom!(st, words))
   }
 
@@ -90,12 +110,13 @@ export class Simulator {
    * Returns how many chips got it.
    */
   setKeyboard(key: number, chipId?: string): number {
+    this.version++
     return this.forEachWith('setKey', (seq, st) => seq.setKey!(st, key), chipId)
   }
 
   /** One stored word of a chip (`index` for memories), or undefined if the chip has no such thing. */
   peek(chipId: string, index?: number): number | undefined {
-    const inst = this.circuit.chips.find((x) => x.id === chipId)
+    const inst = this.byId.get(chipId)
     const seq = inst && chipOf(inst)?.seq
     return inst && seq?.peek ? seq.peek(stateOf(this.states, inst), index) : undefined
   }
@@ -105,23 +126,25 @@ export class Simulator {
    * chip or name.
    */
   peekRegister(chipId: string, name: string): number | undefined {
-    const inst = this.circuit.chips.find((x) => x.id === chipId)
+    const inst = this.byId.get(chipId)
     const seq = inst && chipOf(inst)?.seq
     return inst && seq?.peekReg ? seq.peekReg(stateOf(this.states, inst), name) : undefined
   }
 
   /** Set A, D or PC directly, without the clock (A and D keep 16 bits, PC 15). Unknown names are ignored. */
   pokeRegister(chipId: string, name: string, value: number): void {
-    const inst = this.circuit.chips.find((x) => x.id === chipId)
+    const inst = this.byId.get(chipId)
     const seq = inst && chipOf(inst)?.seq
     if (inst && seq?.pokeReg) seq.pokeReg(stateOf(this.states, inst), name, value)
+    this.version++
   }
 
   /** Write a stored word directly, without the clock. Ignored for chips without `poke` (ROM32K is read-only). */
   poke(chipId: string, index: number, value: number): void {
-    const inst = this.circuit.chips.find((x) => x.id === chipId)
+    const inst = this.byId.get(chipId)
     const seq = inst && chipOf(inst)?.seq
     if (inst && seq?.poke) seq.poke(stateOf(this.states, inst), index, value)
+    this.version++
   }
 
   /** Runs `action` on the state of every clocked chip that has the optional behaviour `method`; returns how many. */
@@ -148,4 +171,11 @@ export class Simulator {
     }
     return out
   }
+}
+
+function sameInputs(a: Record<string, number>, b: Record<string, number>): boolean {
+  const ka = Object.keys(a)
+  if (ka.length !== Object.keys(b).length) return false
+  for (const k of ka) if (a[k] !== b[k]) return false
+  return true
 }
